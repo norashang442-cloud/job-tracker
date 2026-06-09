@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>求职进度追踪器</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'PingFang SC','Inter',sans-serif;background:#F2F7F1;color:#1C2E22;}
+button:focus,input:focus,select:focus{outline:2px solid #5C7A60;outline-offset:1px;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:#F2F7F1;}
+::-webkit-scrollbar-thumb{background:#A8C5A0;border-radius:3px;}
+.card:hover{box-shadow:0 4px 16px rgba(47,69,56,0.2)!important;}
+</style>
+</head>
+<body><div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef}=React;
+const C={
+  fir:"#2F4538",moss:"#3D5A47",sage:"#5C7A60",reed:"#7A9E7E",
+  mist:"#A8C5A0",frost:"#D4E8D0",cream:"#F2F7F1",white:"#FFFFFF",
+  text:"#1C2E22",textLight:"#4A6350",border:"#C2D9BE",shadow:"rgba(47,69,56,0.12)"
+};
+const STATUS=[
+  {key:"applied",  label:"已投递",color:"#5C7A60",bg:"#E8F2E8"},
+  {key:"viewed",   label:"已查看",color:"#7A6E2F",bg:"#F5F2DC"},
+  {key:"interview",label:"面试中",color:"#2F5A7A",bg:"#DCF0F5"},
+  {key:"offer",    label:"已录用",color:"#2F6640",bg:"#D4EDD8"},
+  {key:"rejected", label:"已拒绝",color:"#7A3030",bg:"#F5DCDC"},
+];
+const SOURCES=["Boss直聘","猎聘","智联招聘","LinkedIn","Bright Network","Glassdoor","Indeed","拉勾网","前程无忧","牛客网","脉脉","Reed","TotalJobs","Graduateland","内推","官网","其他"];
+const TYPES=["全职","实习","应届生项目","科研","兼职","其他"];
+const STAGES=["Online Test","Assessment Centre","Individual Interview","Group Interview","Power Day","Video Interview","Phone Screen","HR Round","Technical Interview","Offer Call","其他"];
+const INDUSTRIES=["汽车/交通","科技/互联网","金融/银行","咨询","能源/环保","制造/工业","医疗/健康","教育","消费/零售","媒体/广告","政府/公共事业","其他"];
+const SCHEMA_VERSION=1;
+const EMPTY={company:"",position:"",type:"全职",industry:"",url:"",date:new Date().toISOString().slice(0,10),source:"Boss直聘",status:"applied",note:"",milestones:[]};
+
+// Add new fields with defaults here as the schema evolves
+function migrateJob(job){
+  return {
+    company:    job.company    ?? "",
+    position:   job.position   ?? "",
+    type:       job.type       ?? "全职",
+    industry:   job.industry   ?? "",
+    url:        job.url        ?? "",
+    date:       job.date       ?? new Date().toISOString().slice(0,10),
+    source:     job.source     ?? "其他",
+    status:     job.status     ?? "applied",
+    note:       job.note       ?? "",
+    milestones: Array.isArray(job.milestones) ? job.milestones : [],
+    id:         job.id         ?? Date.now(),
+  };
+}
+
+const inp={width:"100%",padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:14,color:C.text,background:C.cream};
+const lbl={fontSize:12,color:C.textLight,marginBottom:4,display:"block",fontWeight:600};
+
+function Badge({s}){
+  const x=STATUS.find(i=>i.key===s)||STATUS[0];
+  return <span style={{background:x.bg,color:x.color,padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>{x.label}</span>;
+}
+function TypeTag({t}){
+  if(!t||t==="全职") return null;
+  return <span style={{background:C.frost,color:C.moss,padding:"1px 8px",borderRadius:20,fontSize:11,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>{t}</span>;
+}
+function Stat({label,value,color}){
+  return(
+    <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",flex:1,minWidth:80,textAlign:"center",boxShadow:`0 2px 8px ${C.shadow}`}}>
+      <div style={{fontSize:26,fontWeight:700,color:color||C.fir}}>{value}</div>
+      <div style={{fontSize:12,color:C.textLight,marginTop:3}}>{label}</div>
+    </div>
+  );
+}
+function Modal({open,onClose,children}){
+  if(!open) return null;
+  return(
+    <div onClick={e=>e.target===e.currentTarget&&onClose()}
+      style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.38)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:C.white,borderRadius:16,padding:24,width:500,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:`0 8px 32px ${C.shadow}`}}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function MilestoneEditor({milestones,onChange}){
+  const [stage,setStage]=useState(STAGES[0]);
+  const [date,setDate]=useState(new Date().toISOString().slice(0,10));
+  const [note,setNote]=useState("");
+  const add=()=>{
+    if(!stage||!date) return;
+    onChange([...milestones,{id:Date.now(),stage,date,note}].sort((a,b)=>a.date.localeCompare(b.date)));
+    setNote("");
+  };
+  const remove=id=>onChange(milestones.filter(m=>m.id!==id));
+  const stageColor={
+    "Online Test":"#5C7A60","Assessment Centre":"#2F5A7A","Individual Interview":"#6A4F8A",
+    "Group Interview":"#7A6E2F","Power Day":"#7A3030","Video Interview":"#2F6B6B",
+    "Phone Screen":"#4A6350","HR Round":"#5A4A2F","Technical Interview":"#2F4A7A",
+    "Offer Call":"#2F6640","其他":"#888",
+  };
+  return(
+    <div style={{marginTop:4}}>
+      {milestones.length>0&&(
+        <div style={{marginBottom:12,position:"relative",paddingLeft:16}}>
+          <div style={{position:"absolute",left:6,top:0,bottom:0,width:2,background:C.frost,borderRadius:2}}/>
+          {milestones.map((m,i)=>(
+            <div key={m.id} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8,position:"relative"}}>
+              <div style={{width:10,height:10,borderRadius:"50%",background:stageColor[m.stage]||C.sage,flexShrink:0,marginTop:3,zIndex:1}}/>
+              <div style={{flex:1,background:C.cream,borderRadius:8,padding:"6px 10px",border:`1px solid ${C.border}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:12,fontWeight:700,color:stageColor[m.stage]||C.sage}}>{m.stage}</span>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:11,color:C.mist}}>{m.date}</span>
+                    <button onClick={()=>remove(m.id)} style={{background:"none",border:"none",color:"#b05050",cursor:"pointer",fontSize:13,lineHeight:1}}>×</button>
+                  </div>
+                </div>
+                {m.note&&<div style={{fontSize:11,color:C.textLight,marginTop:2,fontStyle:"italic"}}>{m.note}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{background:C.frost,borderRadius:10,padding:10}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+          <div>
+            <label style={{...lbl,fontSize:11}}>环节</label>
+            <select style={{...inp,fontSize:13}} value={stage} onChange={e=>setStage(e.target.value)}>
+              {STAGES.map(s=><option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{...lbl,fontSize:11}}>日期</label>
+            <input type="date" style={{...inp,fontSize:13}} value={date} onChange={e=>setDate(e.target.value)}/>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <input style={{...inp,fontSize:12,flex:1}} value={note} onChange={e=>setNote(e.target.value)} placeholder="备注（可选）"/>
+          <button onClick={add} style={{padding:"8px 14px",borderRadius:8,border:"none",background:C.sage,color:C.white,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>＋ 添加</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function JobForm({initial,onSave,onCancel}){
+  const [form,setForm]=useState(initial||EMPTY);
+  const [rawText,setRawText]=useState("");
+  const [parsing,setParsing]=useState(false);
+  const [msg,setMsg]=useState("");
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  const parseText=async()=>{
+    if(!rawText.trim())return;
+    setParsing(true);setMsg("正在提取信息…");
+    try{
+      const res=await fetch("/api/extract",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({text:rawText})
+      });
+      const json=await res.json();
+      if(!res.ok) throw new Error(json.error||"failed");
+      setForm(f=>({...f,
+        company:  json.company  ||f.company,
+        position: json.position ||f.position,
+        industry: INDUSTRIES.includes(json.industry)?json.industry:f.industry,
+        type:     TYPES.includes(json.type)?json.type:f.type,
+        source:   SOURCES.includes(json.source)?json.source:f.source,
+      }));
+      setMsg("✅ 提取成功，请核对后保存");
+    }catch{setMsg("⚠️ 提取失败，请手动填写");}
+    setParsing(false);
+  };
+
+  return(
+    <div>
+      <h3 style={{margin:"0 0 16px",color:C.fir,fontSize:17}}>{initial?.id?"编辑投递":"添加投递"}</h3>
+      {!initial?.id&&(
+        <div style={{background:C.frost,borderRadius:10,padding:14,marginBottom:16}}>
+          <label style={{...lbl,color:C.moss}}>📋 粘贴职位描述文本，自动提取信息</label>
+          <textarea value={rawText} onChange={e=>setRawText(e.target.value)}
+            placeholder={"将职位页面的文字内容复制粘贴至此\n（包含公司名、职位名、行业、职位类型、来源等信息即可，无需完整）"}
+            style={{...inp,height:90,resize:"vertical",fontSize:13,lineHeight:1.5,fontFamily:"inherit"}}/>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:8}}>
+            {msg?<span style={{fontSize:12,color:msg.startsWith("✅")?C.sage:msg.startsWith("⚠️")?"#b07030":C.textLight}}>{msg}</span>:<span/>}
+            <button onClick={parseText} disabled={parsing||!rawText.trim()}
+              style={{padding:"7px 16px",borderRadius:8,border:"none",background:parsing?C.mist:C.fir,color:C.white,cursor:parsing?"not-allowed":"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
+              {parsing?"提取中…":"自动填写"}
+            </button>
+          </div>
+        </div>
+      )}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div><label style={lbl}>公司名称 *</label><input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/></div>
+        <div><label style={lbl}>职位名称 *</label><input style={inp} value={form.position} onChange={e=>set("position",e.target.value)} placeholder="如：Graduate Engineer"/></div>
+        <div><label style={lbl}>公司行业</label>
+          <select style={inp} value={form.industry||""} onChange={e=>set("industry",e.target.value)}>
+            <option value="">请选择</option>
+            {INDUSTRIES.map(t=><option key={t}>{t}</option>)}
+          </select>
+        </div>
+        <div><label style={lbl}>职位类型</label>
+          <select style={inp} value={form.type} onChange={e=>set("type",e.target.value)}>
+            {TYPES.map(t=><option key={t}>{t}</option>)}
+          </select>
+        </div>
+        <div><label style={lbl}>来源渠道</label>
+          <select style={inp} value={form.source} onChange={e=>set("source",e.target.value)}>
+            {SOURCES.map(s=><option key={s}>{s}</option>)}
+          </select>
+        </div>
+        <div><label style={lbl}>投递日期</label><input type="date" style={inp} value={form.date} onChange={e=>set("date",e.target.value)}/></div>
+        <div><label style={lbl}>当前状态</label>
+          <select style={inp} value={form.status} onChange={e=>set("status",e.target.value)}>
+            {STATUS.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
+        </div>
+        <div><label style={lbl}>职位链接</label><input style={inp} value={form.url||""} onChange={e=>set("url",e.target.value)} placeholder="https://..."/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={lbl}>备注</label><input style={inp} value={form.note} onChange={e=>set("note",e.target.value)} placeholder="可选"/></div>
+      </div>
+      <div style={{marginTop:16}}>
+        <label style={{...lbl,fontSize:13,color:C.moss}}>📅 流程时间轴</label>
+        <MilestoneEditor milestones={form.milestones||[]} onChange={v=>set("milestones",v)}/>
+      </div>
+      <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
+        <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
+        <button onClick={()=>form.company&&form.position&&onSave(form)}
+          style={{padding:"8px 22px",borderRadius:8,border:"none",background:C.fir,color:C.white,cursor:"pointer",fontSize:14,fontWeight:600}}>保存</button>
+      </div>
+    </div>
+  );
+}
+
+function KanbanCard({job,onEdit,onDel,isDragging}){
+  const ms=job.milestones||[];
+  const latest=ms.length>0?ms[ms.length-1]:null;
+  const stageColor={"Online Test":"#5C7A60","Assessment Centre":"#2F5A7A","Individual Interview":"#6A4F8A","Group Interview":"#7A6E2F","Power Day":"#7A3030","Video Interview":"#2F6B6B","Offer Call":"#2F6640"};
+  return(
+    <div className="card" style={{background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",cursor:"grab",opacity:isDragging?0.45:1,boxShadow:"0 1px 4px rgba(47,69,56,0.08)",transition:"box-shadow 0.15s,opacity 0.15s"}}>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:6,marginBottom:4}}>
+        <div style={{fontWeight:700,fontSize:13,color:C.fir,wordBreak:"break-word",lineHeight:1.4}}>
+          {job.url?<a href={job.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir,textDecoration:"none"}} onMouseOver={e=>e.target.style.textDecoration="underline"} onMouseOut={e=>e.target.style.textDecoration="none"}>{job.company} ↗</a>:job.company}
+        </div>
+        <Badge s={job.status}/>
+      </div>
+      <div style={{fontSize:12,color:C.textLight,wordBreak:"break-word",lineHeight:1.4,marginBottom:6}}>{job.position}</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:latest?8:6}}>
+        <TypeTag t={job.type}/>
+        <span style={{background:C.frost,color:C.moss,padding:"1px 7px",borderRadius:8,fontSize:11}}>{job.source}</span>
+        <span style={{color:C.mist,fontSize:11,marginLeft:"auto"}}>{job.date}</span>
+      </div>
+      {latest&&(
+        <div style={{background:C.frost,borderRadius:7,padding:"5px 8px",marginBottom:6,fontSize:11,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{color:stageColor[latest.stage]||C.sage,fontWeight:600}}>▶ {latest.stage}</span>
+          <span style={{color:C.mist}}>{latest.date}</span>
+        </div>
+      )}
+      {ms.length>1&&<div style={{fontSize:11,color:C.textLight,marginBottom:6}}>+{ms.length-1} 个历史环节</div>}
+      {job.note&&<div style={{fontSize:11,color:C.textLight,fontStyle:"italic",wordBreak:"break-word",marginBottom:6}}>📝 {job.note}</div>}
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={onEdit} style={{flex:1,padding:"3px 0",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>编辑</button>
+        <button onClick={onDel}  style={{flex:1,padding:"3px 0",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>删除</button>
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const [jobs,setJobs]=useState(()=>{try{return JSON.parse(localStorage.getItem("jt4")||"[]").map(migrateJob)}catch{return []}});
+  const [view,setView]=useState("看板");
+  const [modal,setModal]=useState(null);
+  const [filter,setFilter]=useState("all");
+  const [typeFilter,setTypeFilter]=useState("all");
+  const [dragId,setDragId]=useState(null);
+  const dragOver=useRef(null);
+
+  useEffect(()=>{try{localStorage.setItem("jt4",JSON.stringify(jobs))}catch{}},[jobs]);
+
+  const save=f=>{
+    if(modal==="add") setJobs(j=>[...j,{...f,id:Date.now()}]);
+    else setJobs(j=>j.map(x=>x.id===modal.id?{...modal,...f}:x));
+    setModal(null);
+  };
+  const del=id=>{if(confirm("确认删除？"))setJobs(j=>j.filter(x=>x.id!==id));};
+  const upStatus=(id,s)=>setJobs(j=>j.map(x=>x.id===id?{...x,status:s}:x));
+  const exportData=()=>{
+    const payload={version:SCHEMA_VERSION,exportedAt:new Date().toISOString(),jobs};
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=`job-tracker-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();URL.revokeObjectURL(a.href);
+  };
+  const importData=e=>{
+    const file=e.target.files[0];if(!file)return;
+    const r=new FileReader();
+    r.onload=ev=>{
+      try{
+        const raw=JSON.parse(ev.target.result);
+        // Support both old format (plain array) and new format ({version, jobs})
+        const incoming=Array.isArray(raw)?raw:(Array.isArray(raw.jobs)?raw.jobs:[]);
+        if(incoming.length===0)throw new Error();
+        const migrated=incoming.map(migrateJob);
+        if(jobs.length>0&&!confirm(`当前有 ${jobs.length} 条记录，导入将合并数据，确认继续？`))return;
+        const merged=[...jobs];
+        migrated.forEach(item=>{if(!merged.find(x=>x.id===item.id))merged.push(item);});
+        setJobs(merged);alert(`✅ 导入成功，共 ${merged.length} 条记录`);
+      }catch{alert("⚠️ 文件格式有误");}
+    };
+    r.readAsText(file);e.target.value="";
+  };
+
+  const filtered=jobs.filter(j=>filter==="all"||j.status===filter).filter(j=>typeFilter==="all"||j.type===typeFilter);
+  const total=jobs.length,interviews=jobs.filter(j=>j.status==="interview").length;
+  const offers=jobs.filter(j=>j.status==="offer").length;
+  const rate=total?Math.round(offers/total*100):0;
+
+  const tabBtn=active=>({padding:"6px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,background:active?C.fir:"transparent",color:active?C.white:C.textLight,transition:"all 0.2s"});
+  const selStyle={padding:"6px 12px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.text,fontSize:13,cursor:"pointer"};
+
+  return(
+    <div style={{minHeight:"100vh",background:C.cream}}>
+      <div style={{background:C.fir,padding:"18px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+        <div>
+          <div style={{color:C.frost,fontSize:19,fontWeight:700,letterSpacing:1}}>求职进度追踪</div>
+          <div style={{color:C.mist,fontSize:12,marginTop:2}}>Job Application Tracker</div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <button onClick={()=>setModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加投递</button>
+          <button onClick={exportData} style={{background:"transparent",color:C.frost,border:`1px solid ${C.reed}`,borderRadius:10,padding:"9px 14px",cursor:"pointer",fontSize:13}}>⬇ 导出</button>
+          <label style={{background:"transparent",color:C.frost,border:`1px solid ${C.reed}`,borderRadius:10,padding:"9px 14px",cursor:"pointer",fontSize:13}}>
+            ⬆ 导入<input type="file" accept=".json" onChange={importData} style={{display:"none"}}/>
+          </label>
+        </div>
+      </div>
+
+      <div style={{maxWidth:1120,margin:"0 auto",padding:"20px 14px"}}>
+        <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
+          <Stat label="总投递" value={total} color={C.fir}/>
+          <Stat label="面试中" value={interviews} color="#2F5A7A"/>
+          <Stat label="已录用" value={offers} color="#2F6640"/>
+          <Stat label="录用率" value={`${rate}%`} color={C.sage}/>
+        </div>
+
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:3,background:C.frost,borderRadius:24,padding:3}}>
+            {["看板","列表"].map(v=><button key={v} style={tabBtn(view===v)} onClick={()=>setView(v)}>{v}</button>)}
+          </div>
+          <select style={selStyle} value={filter} onChange={e=>setFilter(e.target.value)}>
+            <option value="all">全部状态</option>
+            {STATUS.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
+          <select style={selStyle} value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}>
+            <option value="all">全部类型</option>
+            {TYPES.map(t=><option key={t}>{t}</option>)}
+          </select>
+        </div>
+
+        {view==="看板"&&(
+          <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:8,alignItems:"flex-start"}}>
+            {STATUS.map(col=>{
+              const colJobs=jobs.filter(j=>j.status===col.key&&(typeFilter==="all"||j.type===typeFilter));
+              const isOver=dragOver.current===col.key;
+              return(
+                <div key={col.key}
+                  onDragOver={e=>{e.preventDefault();dragOver.current=col.key;}}
+                  onDrop={()=>{if(dragId)upStatus(dragId,col.key);setDragId(null);dragOver.current=null;}}
+                  style={{minWidth:195,width:195,flexShrink:0,background:isOver?C.frost:C.white,border:`1.5px solid ${isOver?C.sage:C.border}`,borderRadius:14,padding:12,transition:"all 0.2s"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                    <span style={{fontWeight:700,fontSize:13,color:col.color}}>{col.label}</span>
+                    <span style={{background:col.bg,color:col.color,borderRadius:12,padding:"1px 8px",fontSize:12,fontWeight:700}}>{colJobs.length}</span>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {colJobs.map(job=>(
+                      <KanbanCard key={job.id} job={job}
+                        onEdit={()=>setModal(job)} onDel={()=>del(job.id)}
+                        isDragging={dragId===job.id}
+                        onDragStart={()=>setDragId(job.id)} onDragEnd={()=>setDragId(null)}/>
+                    ))}
+                    {colJobs.length===0&&<div style={{textAlign:"center",color:C.mist,fontSize:12,padding:"18px 0",borderRadius:8,border:`1.5px dashed ${C.border}`}}>拖拽到此处</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {view==="列表"&&(
+          <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.border}`,overflow:"auto",boxShadow:`0 2px 12px ${C.shadow}`}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:700}}>
+              <thead>
+                <tr style={{background:C.fir,color:C.frost}}>
+                  {["公司","职位","类型","状态","投递日期","最新环节","来源","备注","操作"].map(h=>(
+                    <th key={h} style={{padding:"11px 12px",textAlign:"left",fontWeight:600,fontSize:12,whiteSpace:"nowrap"}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:32,color:C.mist}}>暂无投递记录</td></tr>}
+                {filtered.map((job,i)=>{
+                  const ms=job.milestones||[];
+                  const latest=ms.length>0?ms[ms.length-1]:null;
+                  return(
+                    <tr key={job.id} style={{background:i%2===0?C.cream:C.white,borderBottom:`1px solid ${C.border}`}}>
+                      <td style={{padding:"9px 12px",fontWeight:700,color:C.fir,maxWidth:120,wordBreak:"break-word"}}>
+                        {job.url?<a href={job.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir}}>{job.company} ↗</a>:job.company}
+                      </td>
+                      <td style={{padding:"9px 12px",maxWidth:150,wordBreak:"break-word"}}>{job.position}</td>
+                      <td style={{padding:"9px 12px",whiteSpace:"nowrap"}}><TypeTag t={job.type}/>{(!job.type||job.type==="全职")&&<span style={{color:C.mist,fontSize:12}}>全职</span>}</td>
+                      <td style={{padding:"9px 12px",whiteSpace:"nowrap"}}><Badge s={job.status}/></td>
+                      <td style={{padding:"9px 12px",color:C.textLight,whiteSpace:"nowrap"}}>{job.date}</td>
+                      <td style={{padding:"9px 12px",whiteSpace:"nowrap"}}>
+                        {latest?<span style={{fontSize:12,color:C.sage,fontWeight:600}}>{latest.stage}<span style={{color:C.mist,fontWeight:400}}> · {latest.date}</span></span>:<span style={{color:C.mist,fontSize:12}}>—</span>}
+                      </td>
+                      <td style={{padding:"9px 12px",color:C.textLight,whiteSpace:"nowrap"}}>{job.source}</td>
+                      <td style={{padding:"9px 12px",color:C.textLight,fontStyle:"italic",maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.note||"—"}</td>
+                      <td style={{padding:"9px 12px",whiteSpace:"nowrap"}}>
+                        <div style={{display:"flex",gap:5}}>
+                          <button onClick={()=>setModal(job)} style={{padding:"3px 9px",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>编辑</button>
+                          <button onClick={()=>del(job.id)} style={{padding:"3px 9px",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>删除</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <Modal open={!!modal} onClose={()=>setModal(null)}>
+        <JobForm initial={modal==="add"?null:modal} onSave={save} onCancel={()=>setModal(null)}/>
+      </Modal>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

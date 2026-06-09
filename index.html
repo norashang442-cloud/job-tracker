@@ -182,14 +182,23 @@ function JobForm({initial,onSave,onCancel}){
       <h3 style={{margin:"0 0 16px",color:C.fir,fontSize:17}}>{initial?.id?"编辑投递":"添加投递"}</h3>
       {!initial?.id&&(
         <div style={{background:C.frost,borderRadius:10,padding:14,marginBottom:16}}>
-          <label style={{...lbl,color:C.moss}}>📋 粘贴职位描述文本，自动提取信息</label>
-          <textarea value={rawText} onChange={e=>setRawText(e.target.value)}
-            placeholder={"将职位页面的文字内容复制粘贴至此\n（包含公司名、职位名、行业、职位类型、来源等信息即可，无需完整）"}
-            style={{...inp,height:90,resize:"vertical",fontSize:13,lineHeight:1.5,fontFamily:"inherit"}}/>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:8}}>
-            {msg?<span style={{fontSize:12,color:msg.startsWith("✅")?C.sage:msg.startsWith("⚠️")?"#b07030":C.textLight}}>{msg}</span>:<span/>}
-            <button onClick={parseText} disabled={parsing||!rawText.trim()}
-              style={{padding:"7px 16px",borderRadius:8,border:"none",background:parsing?C.mist:C.fir,color:C.white,cursor:parsing?"not-allowed":"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
+          <label style={{...lbl,color:C.moss}}>🔍 自动提取职位信息</label>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <div>
+              <label style={{...lbl,fontSize:11}}>粘贴职位链接</label>
+              <input style={{...inp,fontSize:13}} value={jobUrl} onChange={e=>setJobUrl(e.target.value)} placeholder="https://www.brightnetwork.co.uk/..."/>
+            </div>
+            <div>
+              <label style={{...lbl,fontSize:11}}>粘贴职位文本（链接失败时兜底）</label>
+              <textarea value={rawText} onChange={e=>setRawText(e.target.value)}
+                placeholder="复制职位页面文字粘贴至此…"
+                style={{...inp,height:38,resize:"none",fontSize:12,lineHeight:1.4,fontFamily:"inherit",overflow:"hidden"}}/>
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            {msg?<span style={{fontSize:12,color:msg.startsWith("✅")?C.sage:msg.startsWith("⚠️")?"#b07030":C.textLight}}>{msg}</span>:<span style={{fontSize:12,color:C.textLight}}>链接与文本可同时使用，提升准确度</span>}
+            <button onClick={parse} disabled={parsing||(!rawText.trim()&&!jobUrl.trim())}
+              style={{padding:"7px 16px",borderRadius:8,border:"none",background:parsing?C.mist:C.fir,color:C.white,cursor:parsing?"not-allowed":"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap",flexShrink:0,marginLeft:10}}>
               {parsing?"提取中…":"自动填写"}
             </button>
           </div>

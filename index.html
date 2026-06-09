@@ -150,6 +150,7 @@ function MilestoneEditor({milestones,onChange}){
 function JobForm({initial,onSave,onCancel}){
   const [form,setForm]=useState(initial||EMPTY);
   const [rawText,setRawText]=useState("");
+  const [jobUrl,setJobUrl]=useState("");
   const [parsing,setParsing]=useState(false);
   const [msg,setMsg]=useState("");
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));

@@ -10,7 +10,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'PingFang SC','Inter',sans-serif;background:#F2F7F1;color:#1C2E22;}
-button:focus,input:focus,select:focus{outline:2px solid #5C7A60;outline-offset:1px;}
+button:focus,input:focus,select:focus,textarea:focus{outline:2px solid #5C7A60;outline-offset:1px;}
 ::-webkit-scrollbar{width:6px;height:6px;}
 ::-webkit-scrollbar-track{background:#F2F7F1;}
 ::-webkit-scrollbar-thumb{background:#A8C5A0;border-radius:3px;}
@@ -18,7 +18,7 @@ button:focus,input:focus,select:focus{outline:2px solid #5C7A60;outline-offset:1
 </style>
 </head>
 <body><div id="root"></div>
-<script type="text/babel" data-presets="react">
+<script type="text/babel">
 const {useState,useEffect,useRef}=React;
 const C={
   fir:"#2F4538",moss:"#3D5A47",sage:"#5C7A60",reed:"#7A9E7E",
@@ -34,12 +34,14 @@ const STATUS=[
 ];
 const SOURCES=["Boss直聘","猎聘","智联招聘","LinkedIn","Bright Network","Glassdoor","Indeed","拉勾网","前程无忧","牛客网","脉脉","Reed","TotalJobs","Graduateland","内推","官网","其他"];
 const TYPES=["全职","实习","应届生项目","科研","兼职","其他"];
-const STAGES=["Online Test","Assessment Centre","Individual Interview","Group Interview","Power Day","Video Interview","Phone Screen","HR Round","Technical Interview","Offer Call","其他"];
 const INDUSTRIES=["汽车/交通","科技/互联网","金融/银行","咨询","能源/环保","制造/工业","医疗/健康","教育","消费/零售","媒体/广告","政府/公共事业","其他"];
+const STAGES=["Online Test","Assessment Centre","Individual Interview","Group Interview","Power Day","Video Interview","Phone Screen","HR Round","Technical Interview","Offer Call","其他"];
 const SCHEMA_VERSION=1;
 const EMPTY={company:"",position:"",type:"全职",industry:"",url:"",date:new Date().toISOString().slice(0,10),source:"Boss直聘",status:"applied",note:"",milestones:[]};
 
-// Add new fields with defaults here as the schema evolves
+const inp={width:"100%",padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:14,color:C.text,background:C.cream};
+const lbl={fontSize:12,color:C.textLight,marginBottom:4,display:"block",fontWeight:600};
+
 function migrateJob(job){
   return {
     company:    job.company    ?? "",
@@ -51,13 +53,10 @@ function migrateJob(job){
     source:     job.source     ?? "其他",
     status:     job.status     ?? "applied",
     note:       job.note       ?? "",
-    milestones: Array.isArray(job.milestones) ? job.milestones : [],
+    milestones: Array.isArray(job.milestones)?job.milestones:[],
     id:         job.id         ?? Date.now(),
   };
 }
-
-const inp={width:"100%",padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:14,color:C.text,background:C.cream};
-const lbl={fontSize:12,color:C.textLight,marginBottom:4,display:"block",fontWeight:600};
 
 function Badge({s}){
   const x=STATUS.find(i=>i.key===s)||STATUS[0];
@@ -97,18 +96,13 @@ function MilestoneEditor({milestones,onChange}){
     setNote("");
   };
   const remove=id=>onChange(milestones.filter(m=>m.id!==id));
-  const stageColor={
-    "Online Test":"#5C7A60","Assessment Centre":"#2F5A7A","Individual Interview":"#6A4F8A",
-    "Group Interview":"#7A6E2F","Power Day":"#7A3030","Video Interview":"#2F6B6B",
-    "Phone Screen":"#4A6350","HR Round":"#5A4A2F","Technical Interview":"#2F4A7A",
-    "Offer Call":"#2F6640","其他":"#888",
-  };
+  const stageColor={"Online Test":"#5C7A60","Assessment Centre":"#2F5A7A","Individual Interview":"#6A4F8A","Group Interview":"#7A6E2F","Power Day":"#7A3030","Video Interview":"#2F6B6B","Phone Screen":"#4A6350","HR Round":"#5A4A2F","Technical Interview":"#2F4A7A","Offer Call":"#2F6640","其他":"#888"};
   return(
     <div style={{marginTop:4}}>
       {milestones.length>0&&(
         <div style={{marginBottom:12,position:"relative",paddingLeft:16}}>
           <div style={{position:"absolute",left:6,top:0,bottom:0,width:2,background:C.frost,borderRadius:2}}/>
-          {milestones.map((m,i)=>(
+          {milestones.map(m=>(
             <div key={m.id} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8,position:"relative"}}>
               <div style={{width:10,height:10,borderRadius:"50%",background:stageColor[m.stage]||C.sage,flexShrink:0,marginTop:3,zIndex:1}}/>
               <div style={{flex:1,background:C.cream,borderRadius:8,padding:"6px 10px",border:`1px solid ${C.border}`}}>
@@ -149,20 +143,20 @@ function MilestoneEditor({milestones,onChange}){
 
 function JobForm({initial,onSave,onCancel}){
   const [form,setForm]=useState(initial||EMPTY);
-  const [rawText,setRawText]=useState("");
   const [jobUrl,setJobUrl]=useState("");
+  const [rawText,setRawText]=useState("");
   const [parsing,setParsing]=useState(false);
   const [msg,setMsg]=useState("");
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
 
-  const parseText=async()=>{
-    if(!rawText.trim())return;
-    setParsing(true);setMsg("正在提取信息…");
+  const parse=async()=>{
+    if(!rawText.trim()&&!jobUrl.trim()) return;
+    setParsing(true); setMsg("正在提取信息…");
     try{
       const res=await fetch("/api/extract",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({text:rawText})
+        body:JSON.stringify({text:rawText||undefined,url:jobUrl||undefined})
       });
       const json=await res.json();
       if(!res.ok) throw new Error(json.error||"failed");
@@ -172,9 +166,10 @@ function JobForm({initial,onSave,onCancel}){
         industry: INDUSTRIES.includes(json.industry)?json.industry:f.industry,
         type:     TYPES.includes(json.type)?json.type:f.type,
         source:   SOURCES.includes(json.source)?json.source:f.source,
+        url:      jobUrl||f.url,
       }));
       setMsg("✅ 提取成功，请核对后保存");
-    }catch{setMsg("⚠️ 提取失败，请手动填写");}
+    }catch{ setMsg("⚠️ 提取失败，请手动填写"); }
     setParsing(false);
   };
 
@@ -193,7 +188,7 @@ function JobForm({initial,onSave,onCancel}){
               <label style={{...lbl,fontSize:11}}>粘贴职位文本（链接失败时兜底）</label>
               <textarea value={rawText} onChange={e=>setRawText(e.target.value)}
                 placeholder="复制职位页面文字粘贴至此…"
-                style={{...inp,height:38,resize:"none",fontSize:12,lineHeight:1.4,fontFamily:"inherit",overflow:"hidden"}}/>
+                style={{...inp,height:38,resize:"none",fontSize:12,lineHeight:1.4,fontFamily:"inherit"}}/>
             </div>
           </div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -246,12 +241,13 @@ function JobForm({initial,onSave,onCancel}){
   );
 }
 
-function KanbanCard({job,onEdit,onDel,isDragging}){
+function KanbanCard({job,onEdit,onDel,isDragging,onDragStart,onDragEnd}){
   const ms=job.milestones||[];
   const latest=ms.length>0?ms[ms.length-1]:null;
   const stageColor={"Online Test":"#5C7A60","Assessment Centre":"#2F5A7A","Individual Interview":"#6A4F8A","Group Interview":"#7A6E2F","Power Day":"#7A3030","Video Interview":"#2F6B6B","Offer Call":"#2F6640"};
   return(
-    <div className="card" style={{background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",cursor:"grab",opacity:isDragging?0.45:1,boxShadow:"0 1px 4px rgba(47,69,56,0.08)",transition:"box-shadow 0.15s,opacity 0.15s"}}>
+    <div draggable className="card" onDragStart={onDragStart} onDragEnd={onDragEnd}
+      style={{background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",cursor:"grab",opacity:isDragging?0.45:1,boxShadow:"0 1px 4px rgba(47,69,56,0.08)",transition:"box-shadow 0.15s,opacity 0.15s"}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:6,marginBottom:4}}>
         <div style={{fontWeight:700,fontSize:13,color:C.fir,wordBreak:"break-word",lineHeight:1.4}}>
           {job.url?<a href={job.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir,textDecoration:"none"}} onMouseOver={e=>e.target.style.textDecoration="underline"} onMouseOut={e=>e.target.style.textDecoration="none"}>{job.company} ↗</a>:job.company}
@@ -312,7 +308,6 @@ function App(){
     r.onload=ev=>{
       try{
         const raw=JSON.parse(ev.target.result);
-        // Support both old format (plain array) and new format ({version, jobs})
         const incoming=Array.isArray(raw)?raw:(Array.isArray(raw.jobs)?raw.jobs:[]);
         if(incoming.length===0)throw new Error();
         const migrated=incoming.map(migrateJob);

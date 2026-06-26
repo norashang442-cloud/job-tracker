@@ -143,63 +143,11 @@ function MilestoneEditor({milestones,onChange}){
 
 function JobForm({initial,onSave,onCancel}){
   const [form,setForm]=useState(initial||EMPTY);
-  const [jobUrl,setJobUrl]=useState("");
-  const [rawText,setRawText]=useState("");
-  const [parsing,setParsing]=useState(false);
-  const [msg,setMsg]=useState("");
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-
-  const parse=async()=>{
-    if(!rawText.trim()&&!jobUrl.trim()) return;
-    setParsing(true); setMsg("正在提取信息…");
-    try{
-      const res=await fetch("/api/extract",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({text:rawText||undefined,url:jobUrl||undefined})
-      });
-      const json=await res.json();
-      if(!res.ok) throw new Error(json.error||"failed");
-      setForm(f=>({...f,
-        company:  json.company  ||f.company,
-        position: json.position ||f.position,
-        industry: INDUSTRIES.includes(json.industry)?json.industry:f.industry,
-        type:     TYPES.includes(json.type)?json.type:f.type,
-        source:   SOURCES.includes(json.source)?json.source:f.source,
-        url:      jobUrl||f.url,
-      }));
-      setMsg("✅ 提取成功，请核对后保存");
-    }catch{ setMsg("⚠️ 提取失败，请手动填写"); }
-    setParsing(false);
-  };
 
   return(
     <div>
       <h3 style={{margin:"0 0 16px",color:C.fir,fontSize:17}}>{initial?.id?"编辑投递":"添加投递"}</h3>
-      {!initial?.id&&(
-        <div style={{background:C.frost,borderRadius:10,padding:14,marginBottom:16}}>
-          <label style={{...lbl,color:C.moss}}>🔍 自动提取职位信息</label>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-            <div>
-              <label style={{...lbl,fontSize:11}}>粘贴职位链接</label>
-              <input style={{...inp,fontSize:13}} value={jobUrl} onChange={e=>setJobUrl(e.target.value)} placeholder="https://www.brightnetwork.co.uk/..."/>
-            </div>
-            <div>
-              <label style={{...lbl,fontSize:11}}>粘贴职位文本（链接失败时兜底）</label>
-              <textarea value={rawText} onChange={e=>setRawText(e.target.value)}
-                placeholder="复制职位页面文字粘贴至此…"
-                style={{...inp,height:38,resize:"none",fontSize:12,lineHeight:1.4,fontFamily:"inherit"}}/>
-            </div>
-          </div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            {msg?<span style={{fontSize:12,color:msg.startsWith("✅")?C.sage:msg.startsWith("⚠️")?"#b07030":C.textLight}}>{msg}</span>:<span style={{fontSize:12,color:C.textLight}}>链接与文本可同时使用，提升准确度</span>}
-            <button onClick={parse} disabled={parsing||(!rawText.trim()&&!jobUrl.trim())}
-              style={{padding:"7px 16px",borderRadius:8,border:"none",background:parsing?C.mist:C.fir,color:C.white,cursor:parsing?"not-allowed":"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap",flexShrink:0,marginLeft:10}}>
-              {parsing?"提取中…":"自动填写"}
-            </button>
-          </div>
-        </div>
-      )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <div><label style={lbl}>公司名称 *</label><input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/></div>
         <div><label style={lbl}>职位名称 *</label><input style={inp} value={form.position} onChange={e=>set("position",e.target.value)} placeholder="如：Graduate Engineer"/></div>
@@ -276,16 +224,42 @@ function KanbanCard({job,onEdit,onDel,isDragging,onDragStart,onDragEnd}){
   );
 }
 
+function ToApplyForm({initial,onSave,onCancel}){
+  const EMPTY_TA={company:"",position:"",url:"",note:""};
+  const [form,setForm]=useState(initial||EMPTY_TA);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  return(
+    <div>
+      <h3 style={{margin:"0 0 16px",color:C.fir,fontSize:17}}>{initial?.id?"编辑待投递":"添加待投递"}</h3>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div><label style={lbl}>公司名称 *</label><input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/></div>
+        <div><label style={lbl}>职位名称 *</label><input style={inp} value={form.position} onChange={e=>set("position",e.target.value)} placeholder="如：Graduate Engineer"/></div>
+        <div><label style={lbl}>职位链接</label><input style={inp} value={form.url||""} onChange={e=>set("url",e.target.value)} placeholder="https://..."/></div>
+        <div><label style={lbl}>备注</label><input style={inp} value={form.note||""} onChange={e=>set("note",e.target.value)} placeholder="可选，如截止日期、联系人等"/></div>
+      </div>
+      <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
+        <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
+        <button onClick={()=>form.company&&form.position&&onSave(form)}
+          style={{padding:"8px 22px",borderRadius:8,border:"none",background:C.fir,color:C.white,cursor:"pointer",fontSize:14,fontWeight:600}}>保存</button>
+      </div>
+    </div>
+  );
+}
+
 function App(){
   const [jobs,setJobs]=useState(()=>{try{return JSON.parse(localStorage.getItem("jt4")||"[]").map(migrateJob)}catch{return []}});
+  const [toApply,setToApply]=useState(()=>{try{return JSON.parse(localStorage.getItem("jt4_toApply")||"[]")}catch{return []}});
+  const [mainTab,setMainTab]=useState("tracker");
   const [view,setView]=useState("看板");
   const [modal,setModal]=useState(null);
+  const [taModal,setTaModal]=useState(false);
   const [filter,setFilter]=useState("all");
   const [typeFilter,setTypeFilter]=useState("all");
   const [dragId,setDragId]=useState(null);
   const dragOver=useRef(null);
 
   useEffect(()=>{try{localStorage.setItem("jt4",JSON.stringify(jobs))}catch{}},[jobs]);
+  useEffect(()=>{try{localStorage.setItem("jt4_toApply",JSON.stringify(toApply))}catch{}},[toApply]);
 
   const save=f=>{
     if(modal==="add") setJobs(j=>[...j,{...f,id:Date.now()}]);
@@ -328,23 +302,85 @@ function App(){
   const tabBtn=active=>({padding:"6px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,background:active?C.fir:"transparent",color:active?C.white:C.textLight,transition:"all 0.2s"});
   const selStyle={padding:"6px 12px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.text,fontSize:13,cursor:"pointer"};
 
+  const saveTA=item=>{
+    if(taModal==="add") setToApply(a=>[...a,{...item,id:Date.now()}]);
+    else setToApply(a=>a.map(x=>x.id===taModal.id?{...taModal,...item}:x));
+    setTaModal(false);
+  };
+  const delTA=id=>{if(confirm("确认删除？"))setToApply(a=>a.filter(x=>x.id!==id));};
+  const promoteTA=item=>{
+    setJobs(j=>[...j,{...EMPTY,company:item.company,position:item.position,url:item.url,note:item.note,id:Date.now()}]);
+    delTA(item.id);
+    setMainTab("tracker");
+  };
+
+  const mainTabBtn=active=>({padding:"8px 20px",borderRadius:20,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,background:active?C.white:C.fir,color:active?C.fir:C.mist,transition:"all 0.2s",boxShadow:active?"0 2px 8px rgba(47,69,56,0.15)":"none"});
+
   return(
     <div style={{minHeight:"100vh",background:C.cream}}>
-      <div style={{background:C.fir,padding:"18px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
-        <div>
+      <div style={{background:C.fir,padding:"18px 24px 0",display:"flex",alignItems:"flex-end",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+        <div style={{paddingBottom:0}}>
           <div style={{color:C.frost,fontSize:19,fontWeight:700,letterSpacing:1}}>求职进度追踪</div>
-          <div style={{color:C.mist,fontSize:12,marginTop:2}}>Job Application Tracker</div>
+          <div style={{color:C.mist,fontSize:12,marginTop:2,marginBottom:12}}>Job Application Tracker</div>
+          <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4,width:"fit-content"}}>
+            <button style={mainTabBtn(mainTab==="tracker")} onClick={()=>setMainTab("tracker")}>📋 投递追踪</button>
+            <button style={mainTabBtn(mainTab==="toApply")} onClick={()=>setMainTab("toApply")}>
+              📌 待投递
+              {toApply.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{toApply.length}</span>}
+            </button>
+          </div>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          <button onClick={()=>setModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加投递</button>
-          <button onClick={exportData} style={{background:"transparent",color:C.frost,border:`1px solid ${C.reed}`,borderRadius:10,padding:"9px 14px",cursor:"pointer",fontSize:13}}>⬇ 导出</button>
-          <label style={{background:"transparent",color:C.frost,border:`1px solid ${C.reed}`,borderRadius:10,padding:"9px 14px",cursor:"pointer",fontSize:13}}>
-            ⬆ 导入<input type="file" accept=".json" onChange={importData} style={{display:"none"}}/>
-          </label>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",paddingBottom:16}}>
+          {mainTab==="tracker"&&<>
+            <button onClick={()=>setModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加投递</button>
+            <button onClick={exportData} style={{background:"transparent",color:C.frost,border:`1px solid ${C.reed}`,borderRadius:10,padding:"9px 14px",cursor:"pointer",fontSize:13}}>⬇ 导出</button>
+            <label style={{background:"transparent",color:C.frost,border:`1px solid ${C.reed}`,borderRadius:10,padding:"9px 14px",cursor:"pointer",fontSize:13}}>
+              ⬆ 导入<input type="file" accept=".json" onChange={importData} style={{display:"none"}}/>
+            </label>
+          </>}
+          {mainTab==="toApply"&&
+            <button onClick={()=>setTaModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加待投递</button>
+          }
         </div>
       </div>
 
       <div style={{maxWidth:1120,margin:"0 auto",padding:"20px 14px"}}>
+
+        {mainTab==="toApply"&&(
+          <div>
+            {toApply.length===0&&(
+              <div style={{textAlign:"center",padding:"60px 20px",color:C.mist}}>
+                <div style={{fontSize:36,marginBottom:12}}>📌</div>
+                <div style={{fontSize:15,fontWeight:600,marginBottom:6}}>暂无待投递职位</div>
+                <div style={{fontSize:13}}>点击「添加待投递」先收藏感兴趣的职位</div>
+              </div>
+            )}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+              {toApply.map(item=>(
+                <div key={item.id} className="card" style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",boxShadow:`0 2px 8px ${C.shadow}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                    <div style={{fontWeight:700,fontSize:14,color:C.fir,wordBreak:"break-word",flex:1,marginRight:8}}>
+                      {item.url
+                        ?<a href={item.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir,textDecoration:"none"}} onMouseOver={e=>e.target.style.textDecoration="underline"} onMouseOut={e=>e.target.style.textDecoration="none"}>{item.company} ↗</a>
+                        :item.company}
+                    </div>
+                    <span style={{background:C.frost,color:C.moss,padding:"2px 9px",borderRadius:12,fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>待投递</span>
+                  </div>
+                  <div style={{fontSize:13,color:C.textLight,marginBottom:4}}>{item.position}</div>
+                  {item.url&&<div style={{fontSize:11,color:C.mist,marginBottom:6,wordBreak:"break-all",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.url}</div>}
+                  {item.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",marginBottom:8,wordBreak:"break-word"}}>📝 {item.note}</div>}
+                  <div style={{display:"flex",gap:6,marginTop:8}}>
+                    <button onClick={()=>promoteTA(item)} style={{flex:1,padding:"5px 0",borderRadius:7,border:"none",background:C.fir,color:C.white,fontSize:12,cursor:"pointer",fontWeight:600}}>✅ 标记已投</button>
+                    <button onClick={()=>setTaModal(item)} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:12,cursor:"pointer"}}>编辑</button>
+                    <button onClick={()=>delTA(item.id)} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:12,cursor:"pointer"}}>删除</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {mainTab==="tracker"&&(<>
         <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
           <Stat label="总投递" value={total} color={C.fir}/>
           <Stat label="面试中" value={interviews} color="#2F5A7A"/>
@@ -438,9 +474,14 @@ function App(){
           </div>
         )}
       </div>
+        </>)}
+      </div>
 
       <Modal open={!!modal} onClose={()=>setModal(null)}>
         <JobForm initial={modal==="add"?null:modal} onSave={save} onCancel={()=>setModal(null)}/>
+      </Modal>
+      <Modal open={!!taModal} onClose={()=>setTaModal(false)}>
+        <ToApplyForm initial={taModal==="add"?null:taModal} onSave={saveTA} onCancel={()=>setTaModal(false)}/>
       </Modal>
     </div>
   );

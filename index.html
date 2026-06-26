@@ -231,6 +231,7 @@ function JobForm({initial,onSave,onCancel}){
 }
 
 function KanbanCard({job,onEdit,onDel,isDragging,onDragStart,onDragEnd}){
+  const [expanded,setExpanded]=useState(false);
   const ms=job.milestones||[];
   const latest=ms.length>0?ms[ms.length-1]:null;
   const stageColor={"Online Test":"#5C7A60","Assessment Centre":"#2F5A7A","Individual Interview":"#6A4F8A","Group Interview":"#7A6E2F","Power Day":"#7A3030","Video Interview":"#2F6B6B","Offer Call":"#2F6640"};
@@ -238,45 +239,153 @@ function KanbanCard({job,onEdit,onDel,isDragging,onDragStart,onDragEnd}){
     <div draggable className="card" onDragStart={onDragStart} onDragEnd={onDragEnd}
       style={{background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",cursor:"grab",opacity:isDragging?0.45:1,boxShadow:"0 1px 4px rgba(47,69,56,0.08)",transition:"box-shadow 0.15s,opacity 0.15s"}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:6,marginBottom:4}}>
-        <div style={{fontWeight:700,fontSize:13,color:C.fir,wordBreak:"break-word",lineHeight:1.4}}>
-          {job.url?<a href={job.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir,textDecoration:"none"}} onMouseOver={e=>e.target.style.textDecoration="underline"} onMouseOut={e=>e.target.style.textDecoration="none"}>{job.company} ↗</a>:job.company}
+        <div style={{fontWeight:700,fontSize:13,color:C.fir,wordBreak:"break-word",lineHeight:1.4,flex:1}}>
+          {job.url
+            ?<a href={job.url} title={job.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir,textDecoration:"none"}} onMouseOver={e=>e.currentTarget.style.textDecoration="underline"} onMouseOut={e=>e.currentTarget.style.textDecoration="none"}>{job.company} ↗</a>
+            :job.company}
         </div>
-        <Badge s={job.status}/>
+        <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+          <Badge s={job.status}/>
+          <button onClick={()=>setExpanded(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:C.mist,padding:"0 2px",lineHeight:1}} title={expanded?"收起":"展开"}>
+            {expanded?"▲":"▼"}
+          </button>
+        </div>
       </div>
-      <div style={{fontSize:12,color:C.textLight,wordBreak:"break-word",lineHeight:1.4,marginBottom:6}}>{job.position}</div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:latest?8:6}}>
-        <TypeTag t={job.type}/>
-        <span style={{background:C.frost,color:C.moss,padding:"1px 7px",borderRadius:8,fontSize:11}}>{job.source}</span>
-        <span style={{color:C.mist,fontSize:11,marginLeft:"auto"}}>{job.date}</span>
-      </div>
-      {latest&&(
-        <div style={{background:C.frost,borderRadius:7,padding:"5px 8px",marginBottom:6,fontSize:11,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{color:stageColor[latest.stage]||C.sage,fontWeight:600}}>▶ {latest.stage}</span>
-          <span style={{color:C.mist}}>{latest.date}</span>
+      <div style={{fontSize:12,color:C.textLight,wordBreak:"break-word",lineHeight:1.4,marginBottom:expanded?6:0}}>{job.position}</div>
+      {expanded&&(<>
+        <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:latest?8:6,marginTop:6}}>
+          <TypeTag t={job.type}/>
+          <span style={{background:C.frost,color:C.moss,padding:"1px 7px",borderRadius:8,fontSize:11}}>{job.source}</span>
+          <span style={{color:C.mist,fontSize:11,marginLeft:"auto"}}>{job.date}</span>
+        </div>
+        {latest&&(
+          <div style={{background:C.frost,borderRadius:7,padding:"5px 8px",marginBottom:6,fontSize:11,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{color:stageColor[latest.stage]||C.sage,fontWeight:600}}>▶ {latest.stage}</span>
+            <span style={{color:C.mist}}>{latest.date}</span>
+          </div>
+        )}
+        {ms.length>1&&<div style={{fontSize:11,color:C.textLight,marginBottom:6}}>+{ms.length-1} 个历史环节</div>}
+        {job.note&&<div style={{fontSize:11,color:C.textLight,fontStyle:"italic",wordBreak:"break-word",marginBottom:6}}>📝 {job.note}</div>}
+        <div style={{display:"flex",gap:6,marginTop:4}}>
+          <button onClick={onEdit} style={{flex:1,padding:"3px 0",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>编辑</button>
+          <button onClick={onDel}  style={{flex:1,padding:"3px 0",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>删除</button>
+        </div>
+      </>)}
+      {!expanded&&(
+        <div style={{display:"flex",gap:6,marginTop:6}}>
+          <button onClick={onEdit} style={{flex:1,padding:"3px 0",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>编辑</button>
+          <button onClick={onDel}  style={{flex:1,padding:"3px 0",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>删除</button>
         </div>
       )}
-      {ms.length>1&&<div style={{fontSize:11,color:C.textLight,marginBottom:6}}>+{ms.length-1} 个历史环节</div>}
-      {job.note&&<div style={{fontSize:11,color:C.textLight,fontStyle:"italic",wordBreak:"break-word",marginBottom:6}}>📝 {job.note}</div>}
-      <div style={{display:"flex",gap:6}}>
-        <button onClick={onEdit} style={{flex:1,padding:"3px 0",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>编辑</button>
-        <button onClick={onDel}  style={{flex:1,padding:"3px 0",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>删除</button>
+    </div>
+  );
+}
+
+function ToApplyCard({item,urgent,expired,daysLeft,priorityColor,onPromote,onEdit,onDel}){
+  const [expanded,setExpanded]=useState(false);
+  const borderColor=urgent?"#e05050":expired?"#bbb":C.border;
+  return(
+    <div className="card" style={{background:C.white,border:`1.5px solid ${borderColor}`,borderRadius:12,padding:"14px 16px",boxShadow:`0 2px 8px ${C.shadow}`,transition:"box-shadow 0.15s"}}>
+      {/* Header: always visible */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+        <div style={{fontWeight:700,fontSize:14,color:C.fir,wordBreak:"break-word",flex:1,marginRight:8}}>
+          {item.url
+            ?<a href={item.url} title={item.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir,textDecoration:"none"}} onMouseOver={e=>e.currentTarget.style.textDecoration="underline"} onMouseOut={e=>e.currentTarget.style.textDecoration="none"}>{item.company} ↗</a>
+            :item.company}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+          {item.priority&&<span style={{fontSize:11,fontWeight:700,color:priorityColor[item.priority]||C.moss}}>{item.priority}</span>}
+          <button onClick={()=>setExpanded(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:C.mist,padding:"0 2px"}}>{expanded?"▲":"▼"}</button>
+        </div>
+      </div>
+      <div style={{fontSize:13,color:C.textLight,marginBottom:6}}>{item.position}</div>
+      {/* DDL row: always visible */}
+      {item.deadline&&(
+        <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
+          <span style={{fontSize:12,color:urgent?"#e05050":expired?"#aaa":C.textLight,fontWeight:urgent?700:400}}>
+            📅 {item.deadline}
+          </span>
+          {urgent&&<span style={{color:"#e05050",fontWeight:700,fontSize:13}}>❗</span>}
+          {expired&&<span style={{color:"#aaa",fontSize:11}}>(已过期)</span>}
+          {!urgent&&!expired&&daysLeft!==null&&daysLeft<=7&&<span style={{fontSize:11,color:C.textLight}}>({daysLeft}天后)</span>}
+        </div>
+      )}
+      {/* Expanded details */}
+      {expanded&&(
+        <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginTop:4}}>
+          {item.salary&&<div style={{fontSize:12,color:C.textLight,marginBottom:4}}>💰 {item.salary}</div>}
+          {item.location&&<div style={{fontSize:12,color:C.textLight,marginBottom:4}}>📍 {item.location}</div>}
+          {item.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",marginBottom:4}}>📝 {item.note}</div>}
+        </div>
+      )}
+      <div style={{display:"flex",gap:6,marginTop:8}}>
+        <button onClick={onPromote} style={{flex:1,padding:"5px 0",borderRadius:7,border:"none",background:C.fir,color:C.white,fontSize:12,cursor:"pointer",fontWeight:600}}>✅ 标记已投</button>
+        <button onClick={onEdit} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:12,cursor:"pointer"}}>编辑</button>
+        <button onClick={onDel} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:12,cursor:"pointer"}}>删除</button>
       </div>
     </div>
   );
 }
 
 function ToApplyForm({initial,onSave,onCancel}){
-  const EMPTY_TA={company:"",position:"",url:"",note:""};
+  const EMPTY_TA={company:"",position:"",url:"",deadline:"",salary:"",location:"",priority:"中",note:""};
   const [form,setForm]=useState(initial||EMPTY_TA);
+  const [rawText,setRawText]=useState("");
+  const [parsing,setParsing]=useState(false);
+  const [msg,setMsg]=useState("");
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  const parse=async()=>{
+    if(!rawText.trim()) return;
+    setParsing(true); setMsg("正在提取信息…");
+    try{
+      const res=await fetch("/api/extract",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({text:rawText})
+      });
+      const json=await res.json();
+      if(!res.ok) throw new Error(json.error||"failed");
+      setForm(f=>({...f,
+        company:  json.company  ||f.company,
+        position: json.position ||f.position,
+      }));
+      setMsg("✅ 提取成功，请核对后保存");
+    }catch{ setMsg("⚠️ 提取失败，请手动填写"); }
+    setParsing(false);
+  };
+
   return(
     <div>
       <h3 style={{margin:"0 0 16px",color:C.fir,fontSize:17}}>{initial?.id?"编辑待投递":"添加待投递"}</h3>
-      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {!initial?.id&&(
+        <div style={{background:C.frost,borderRadius:10,padding:14,marginBottom:16}}>
+          <label style={{...lbl,color:C.moss}}>🔍 自动提取职位信息</label>
+          <textarea value={rawText} onChange={e=>setRawText(e.target.value)}
+            placeholder="复制职位页面文字粘贴至此，自动识别公司、职位等信息…"
+            style={{...inp,height:72,resize:"vertical",fontSize:12,lineHeight:1.5,fontFamily:"inherit",marginTop:6,marginBottom:10}}/>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            {msg?<span style={{fontSize:12,color:msg.startsWith("✅")?C.sage:msg.startsWith("⚠️")?"#b07030":C.textLight}}>{msg}</span>:<span style={{fontSize:12,color:C.textLight}}>粘贴文字后点击自动填写</span>}
+            <button onClick={parse} disabled={parsing||!rawText.trim()}
+              style={{padding:"7px 16px",borderRadius:8,border:"none",background:parsing?C.mist:C.fir,color:C.white,cursor:parsing?"not-allowed":"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap",flexShrink:0,marginLeft:10}}>
+              {parsing?"提取中…":"自动填写"}
+            </button>
+          </div>
+        </div>
+      )}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <div><label style={lbl}>公司名称 *</label><input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/></div>
         <div><label style={lbl}>职位名称 *</label><input style={inp} value={form.position} onChange={e=>set("position",e.target.value)} placeholder="如：Graduate Engineer"/></div>
-        <div><label style={lbl}>职位链接</label><input style={inp} value={form.url||""} onChange={e=>set("url",e.target.value)} placeholder="https://..."/></div>
-        <div><label style={lbl}>备注</label><input style={inp} value={form.note||""} onChange={e=>set("note",e.target.value)} placeholder="可选，如截止日期、联系人等"/></div>
+        <div><label style={lbl}>截止日期</label><input type="date" style={inp} value={form.deadline||""} onChange={e=>set("deadline",e.target.value)}/></div>
+        <div><label style={lbl}>薪资/待遇</label><input style={inp} value={form.salary||""} onChange={e=>set("salary",e.target.value)} placeholder="如：£30k / 25-30k"/></div>
+        <div><label style={lbl}>工作地点</label><input style={inp} value={form.location||""} onChange={e=>set("location",e.target.value)} placeholder="如：London / Remote"/></div>
+        <div><label style={lbl}>优先级</label>
+          <select style={inp} value={form.priority||"中"} onChange={e=>set("priority",e.target.value)}>
+            {["高","中","低"].map(p=><option key={p}>{p}</option>)}
+          </select>
+        </div>
+        <div style={{gridColumn:"1/-1"}}><label style={lbl}>职位链接</label><input style={inp} value={form.url||""} onChange={e=>set("url",e.target.value)} placeholder="https://..."/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={lbl}>备注</label><input style={inp} value={form.note||""} onChange={e=>set("note",e.target.value)} placeholder="可选"/></div>
       </div>
       <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
         <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
@@ -397,26 +506,26 @@ function App(){
               </div>
             )}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
-              {toApply.map(item=>(
-                <div key={item.id} className="card" style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",boxShadow:`0 2px 8px ${C.shadow}`}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-                    <div style={{fontWeight:700,fontSize:14,color:C.fir,wordBreak:"break-word",flex:1,marginRight:8}}>
-                      {item.url
-                        ?<a href={item.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir,textDecoration:"none"}} onMouseOver={e=>e.target.style.textDecoration="underline"} onMouseOut={e=>e.target.style.textDecoration="none"}>{item.company} ↗</a>
-                        :item.company}
-                    </div>
-                    <span style={{background:C.frost,color:C.moss,padding:"2px 9px",borderRadius:12,fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>待投递</span>
-                  </div>
-                  <div style={{fontSize:13,color:C.textLight,marginBottom:4}}>{item.position}</div>
-                  {item.url&&<div style={{fontSize:11,color:C.mist,marginBottom:6,wordBreak:"break-all",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.url}</div>}
-                  {item.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",marginBottom:8,wordBreak:"break-word"}}>📝 {item.note}</div>}
-                  <div style={{display:"flex",gap:6,marginTop:8}}>
-                    <button onClick={()=>promoteTA(item)} style={{flex:1,padding:"5px 0",borderRadius:7,border:"none",background:C.fir,color:C.white,fontSize:12,cursor:"pointer",fontWeight:600}}>✅ 标记已投</button>
-                    <button onClick={()=>setTaModal(item)} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:12,cursor:"pointer"}}>编辑</button>
-                    <button onClick={()=>delTA(item.id)} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:12,cursor:"pointer"}}>删除</button>
-                  </div>
-                </div>
-              ))}
+              {[...toApply].sort((a,b)=>{
+                if(!a.deadline&&!b.deadline) return 0;
+                if(!a.deadline) return 1;
+                if(!b.deadline) return -1;
+                return a.deadline.localeCompare(b.deadline);
+              }).map(item=>{
+                const priorityColor={"高":"#b05050","中":C.moss,"低":C.mist};
+                const today=new Date(); today.setHours(0,0,0,0);
+                const ddlDate=item.deadline?new Date(item.deadline):null;
+                const daysLeft=ddlDate?Math.ceil((ddlDate-today)/(1000*60*60*24)):null;
+                const urgent=daysLeft!==null&&daysLeft<=3&&daysLeft>=0;
+                const expired=daysLeft!==null&&daysLeft<0;
+                return(
+                  <ToApplyCard key={item.id} item={item} urgent={urgent} expired={expired} daysLeft={daysLeft}
+                    priorityColor={priorityColor}
+                    onPromote={()=>promoteTA(item)}
+                    onEdit={()=>setTaModal(item)}
+                    onDel={()=>delTA(item.id)}/>
+                );
+              })}
             </div>
           </div>
         )}
@@ -490,7 +599,7 @@ function App(){
                   return(
                     <tr key={job.id} style={{background:i%2===0?C.cream:C.white,borderBottom:`1px solid ${C.border}`}}>
                       <td style={{padding:"9px 12px",fontWeight:700,color:C.fir,maxWidth:120,wordBreak:"break-word"}}>
-                        {job.url?<a href={job.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir}}>{job.company} ↗</a>:job.company}
+                        {job.url?<a href={job.url} title={job.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir}}>{job.company} ↗</a>:job.company}
                       </td>
                       <td style={{padding:"9px 12px",maxWidth:150,wordBreak:"break-word"}}>{job.position}</td>
                       <td style={{padding:"9px 12px",whiteSpace:"nowrap"}}><TypeTag t={job.type}/>{(!job.type||job.type==="全职")&&<span style={{color:C.mist,fontSize:12}}>全职</span>}</td>

@@ -251,7 +251,7 @@ function KanbanCard({job,onEdit,onDel,isDragging,onDragStart,onDragEnd}){
           </button>
         </div>
       </div>
-      <div style={{fontSize:12,color:C.textLight,wordBreak:"break-word",lineHeight:1.4,marginBottom:expanded?6:0}}>{job.position}</div>
+      <div style={{fontSize:12,color:C.textLight,wordBreak:"break-word",lineHeight:1.4,marginBottom:expanded?6:0}}>{expanded&&job.position}</div>
       {expanded&&(<>
         <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:latest?8:6,marginTop:6}}>
           <TypeTag t={job.type}/>

@@ -143,11 +143,52 @@ function MilestoneEditor({milestones,onChange}){
 
 function JobForm({initial,onSave,onCancel}){
   const [form,setForm]=useState(initial||EMPTY);
+  const [rawText,setRawText]=useState("");
+  const [parsing,setParsing]=useState(false);
+  const [msg,setMsg]=useState("");
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  const parse=async()=>{
+    if(!rawText.trim()) return;
+    setParsing(true); setMsg("正在提取信息…");
+    try{
+      const res=await fetch("/api/extract",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({text:rawText})
+      });
+      const json=await res.json();
+      if(!res.ok) throw new Error(json.error||"failed");
+      setForm(f=>({...f,
+        company:  json.company  ||f.company,
+        position: json.position ||f.position,
+        industry: INDUSTRIES.includes(json.industry)?json.industry:f.industry,
+        type:     TYPES.includes(json.type)?json.type:f.type,
+        source:   SOURCES.includes(json.source)?json.source:f.source,
+      }));
+      setMsg("✅ 提取成功，请核对后保存");
+    }catch{ setMsg("⚠️ 提取失败，请手动填写"); }
+    setParsing(false);
+  };
 
   return(
     <div>
       <h3 style={{margin:"0 0 16px",color:C.fir,fontSize:17}}>{initial?.id?"编辑投递":"添加投递"}</h3>
+      {!initial?.id&&(
+        <div style={{background:C.frost,borderRadius:10,padding:14,marginBottom:16}}>
+          <label style={{...lbl,color:C.moss}}>🔍 自动提取职位信息</label>
+          <textarea value={rawText} onChange={e=>setRawText(e.target.value)}
+            placeholder="复制职位页面文字粘贴至此，自动识别公司、职位等信息…"
+            style={{...inp,height:72,resize:"vertical",fontSize:12,lineHeight:1.5,fontFamily:"inherit",marginTop:6,marginBottom:10}}/>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            {msg?<span style={{fontSize:12,color:msg.startsWith("✅")?C.sage:msg.startsWith("⚠️")?"#b07030":C.textLight}}>{msg}</span>:<span style={{fontSize:12,color:C.textLight}}>粘贴文字后点击自动填写</span>}
+            <button onClick={parse} disabled={parsing||!rawText.trim()}
+              style={{padding:"7px 16px",borderRadius:8,border:"none",background:parsing?C.mist:C.fir,color:C.white,cursor:parsing?"not-allowed":"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap",flexShrink:0,marginLeft:10}}>
+              {parsing?"提取中…":"自动填写"}
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <div><label style={lbl}>公司名称 *</label><input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/></div>
         <div><label style={lbl}>职位名称 *</label><input style={inp} value={form.position} onChange={e=>set("position",e.target.value)} placeholder="如：Graduate Engineer"/></div>

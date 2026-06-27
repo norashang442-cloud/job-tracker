@@ -15,6 +15,26 @@ button:focus,input:focus,select:focus,textarea:focus{outline:2px solid #5C7A60;o
 ::-webkit-scrollbar-track{background:#F2F7F1;}
 ::-webkit-scrollbar-thumb{background:#A8C5A0;border-radius:3px;}
 .card:hover{box-shadow:0 4px 16px rgba(47,69,56,0.2)!important;}
+
+/* Button press effect */
+button{transition:transform 0.1s,box-shadow 0.1s,background 0.15s!important;}
+button:hover:not(:disabled){transform:scale(0.97);}
+button:active:not(:disabled){transform:scale(0.95);}
+
+/* Modal animations */
+@keyframes backdropIn{from{opacity:0}to{opacity:1}}
+@keyframes modalIn{from{opacity:0;transform:translateY(12px) scale(0.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+.modal-backdrop{animation:backdropIn 0.2s ease}
+.modal-box{animation:modalIn 0.22s cubic-bezier(0.34,1.56,0.64,1)}
+
+/* Tab fade */
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.tab-content{animation:fadeIn 0.18s ease}
+
+/* Collapsible slide */
+.collapsible{overflow:hidden;transition:max-height 0.22s cubic-bezier(0.4,0,0.2,1),opacity 0.18s ease;}
+.collapsible.open{max-height:600px;opacity:1;}
+.collapsible.closed{max-height:0;opacity:0;}
 </style>
 </head>
 <body><div id="root"></div>
@@ -77,9 +97,9 @@ function Stat({label,value,color}){
 function Modal({open,onClose,children}){
   if(!open) return null;
   return(
-    <div onClick={e=>e.target===e.currentTarget&&onClose()}
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} className="modal-backdrop"
       style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.38)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div style={{background:C.white,borderRadius:16,padding:24,width:500,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:`0 8px 32px ${C.shadow}`}}>
+      <div className="modal-box" style={{background:C.white,borderRadius:16,padding:24,width:500,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:`0 8px 32px ${C.shadow}`}}>
         {children}
       </div>
     </div>
@@ -237,7 +257,11 @@ function KanbanCard({job,onEdit,onDel,isDragging,onDragStart,onDragEnd}){
   const stageColor={"Online Test":"#5C7A60","Assessment Centre":"#2F5A7A","Individual Interview":"#6A4F8A","Group Interview":"#7A6E2F","Power Day":"#7A3030","Video Interview":"#2F6B6B","Offer Call":"#2F6640"};
   return(
     <div draggable className="card" onDragStart={onDragStart} onDragEnd={onDragEnd}
-      style={{background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",cursor:"grab",opacity:isDragging?0.45:1,boxShadow:"0 1px 4px rgba(47,69,56,0.08)",transition:"box-shadow 0.15s,opacity 0.15s"}}>
+      style={{background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",cursor:"grab",
+        opacity:isDragging?0.45:1,
+        transform:isDragging?"scale(1.04) rotate(2deg)":"scale(1)",
+        boxShadow:isDragging?`0 8px 24px rgba(47,69,56,0.22)`:"0 1px 4px rgba(47,69,56,0.08)",
+        transition:"box-shadow 0.15s,opacity 0.15s,transform 0.15s"}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:6,marginBottom:4}}>
         <div style={{fontWeight:700,fontSize:13,color:C.fir,wordBreak:"break-word",lineHeight:1.4,flex:1}}>
           {job.url
@@ -251,9 +275,9 @@ function KanbanCard({job,onEdit,onDel,isDragging,onDragStart,onDragEnd}){
           </button>
         </div>
       </div>
-      <div style={{fontSize:12,color:C.textLight,wordBreak:"break-word",lineHeight:1.4,marginBottom:expanded?6:0}}>{expanded&&job.position}</div>
-      {expanded&&(<>
-        <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:latest?8:6,marginTop:6}}>
+      <div className={`collapsible ${expanded?"open":"closed"}`}>
+        <div style={{fontSize:12,color:C.textLight,wordBreak:"break-word",lineHeight:1.4,marginBottom:6,paddingTop:2}}>{job.position}</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:latest?8:6}}>
           <TypeTag t={job.type}/>
           <span style={{background:C.frost,color:C.moss,padding:"1px 7px",borderRadius:8,fontSize:11}}>{job.source}</span>
           <span style={{color:C.mist,fontSize:11,marginLeft:"auto"}}>{job.date}</span>
@@ -270,7 +294,7 @@ function KanbanCard({job,onEdit,onDel,isDragging,onDragStart,onDragEnd}){
           <button onClick={onEdit} style={{flex:1,padding:"3px 0",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>编辑</button>
           <button onClick={onDel}  style={{flex:1,padding:"3px 0",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>删除</button>
         </div>
-      </>)}
+      </div>
       {!expanded&&(
         <div style={{display:"flex",gap:6,marginTop:6}}>
           <button onClick={onEdit} style={{flex:1,padding:"3px 0",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>编辑</button>
@@ -311,13 +335,13 @@ function ToApplyCard({item,urgent,expired,daysLeft,priorityColor,onPromote,onEdi
         </div>
       )}
       {/* Expanded details */}
-      {expanded&&(
+      <div className={`collapsible ${expanded?"open":"closed"}`}>
         <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginTop:4}}>
           {item.salary&&<div style={{fontSize:12,color:C.textLight,marginBottom:4}}>💰 {item.salary}</div>}
           {item.location&&<div style={{fontSize:12,color:C.textLight,marginBottom:4}}>📍 {item.location}</div>}
           {item.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",marginBottom:4}}>📝 {item.note}</div>}
         </div>
-      )}
+      </div>
       <div style={{display:"flex",gap:6,marginTop:8}}>
         <button onClick={onPromote} style={{flex:1,padding:"5px 0",borderRadius:7,border:"none",background:C.fir,color:C.white,fontSize:12,cursor:"pointer",fontWeight:600}}>✅ 标记已投</button>
         <button onClick={onEdit} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:12,cursor:"pointer"}}>编辑</button>
@@ -497,7 +521,7 @@ function App(){
       <div style={{maxWidth:1120,margin:"0 auto",padding:"20px 14px"}}>
 
         {mainTab==="toApply"&&(
-          <div>
+          <div className="tab-content">
             {toApply.length===0&&(
               <div style={{textAlign:"center",padding:"60px 20px",color:C.mist}}>
                 <div style={{fontSize:36,marginBottom:12}}>📌</div>
@@ -530,7 +554,7 @@ function App(){
           </div>
         )}
 
-        {mainTab==="tracker"&&(<>
+        {mainTab==="tracker"&&(<div className="tab-content">
         <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
           <Stat label="总投递" value={total} color={C.fir}/>
           <Stat label="面试中" value={interviews} color="#2F5A7A"/>
@@ -623,7 +647,7 @@ function App(){
             </table>
           </div>
         )}
-        </>)}
+        </div>)}
       </div>
 
       <Modal open={!!modal} onClose={()=>setModal(null)}>

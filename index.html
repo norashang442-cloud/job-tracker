@@ -442,6 +442,23 @@ function App(){
   const [typeFilter,setTypeFilter]=useState("all");
   const [dragId,setDragId]=useState(null);
   const dragOver=useRef(null);
+  const dragIdRef=useRef(null);
+  useEffect(()=>{dragIdRef.current=dragId;},[dragId]);
+  useEffect(()=>{
+    let rafId=null,scrollDir=0;
+    const doScroll=()=>{if(scrollDir!==0){window.scrollBy(0,scrollDir*10);rafId=requestAnimationFrame(doScroll);}};
+    const onDragOver=e=>{
+      if(!dragIdRef.current) return;
+      const zone=80,y=e.clientY,vh=window.innerHeight;
+      const d=y<zone?-1:y>vh-zone?1:0;
+      if(d!==scrollDir){scrollDir=d;if(rafId)cancelAnimationFrame(rafId);if(d!==0)rafId=requestAnimationFrame(doScroll);}
+    };
+    const stop=()=>{scrollDir=0;if(rafId){cancelAnimationFrame(rafId);rafId=null;}};
+    document.addEventListener("dragover",onDragOver);
+    document.addEventListener("dragend",stop);
+    document.addEventListener("drop",stop);
+    return()=>{document.removeEventListener("dragover",onDragOver);document.removeEventListener("dragend",stop);document.removeEventListener("drop",stop);stop();};
+  },[]);
 
   useEffect(()=>{try{localStorage.setItem("jt4",JSON.stringify(jobs))}catch{}},[jobs]);
   useEffect(()=>{try{localStorage.setItem("jt4_toApply",JSON.stringify(toApply))}catch{}},[toApply]);

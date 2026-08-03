@@ -60,7 +60,7 @@ const INTENTS=["计划投递","长期关注"];
 const WATCH_REASONS=["能力/经验暂时不够，想先提升再投","岗位尚未开放申请，等秋招后续批次","优先级较低，先集中精力投更心仪的岗位","还想再深入了解这家公司/岗位，没决定好","硬性门槛不符合（学历、工作年限、身份限制等）","还没想清楚要不要走这个行业/方向","其他"];
 const SCHEMA_VERSION=1;
 const EMPTY={company:"",position:"",type:"全职",industry:"",url:"",date:new Date().toISOString().slice(0,10),source:"Boss直聘",status:"applied",note:"",milestones:[]};
-const EMPTY_TOAPPLY={company:"",position:"",url:"",deadline:"",salary:"",location:"",priority:"中",note:"",intent:"计划投递",watchReason:"",companyId:null};
+const EMPTY_TOAPPLY={company:"",position:"",type:"全职",url:"",deadline:"",rolling:false,salary:"",location:"",priority:"中",note:"",intent:"计划投递",watchReason:"",companyId:null};
 const EMPTY_COMPANY={company:"",industry:"",url:"",note:""};
 
 const inp={width:"100%",padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:14,color:C.text,background:C.cream};
@@ -86,8 +86,10 @@ function migrateToApply(item){
   return {
     company:    item.company    ?? "",
     position:   item.position   ?? "",
+    type:       TYPES.includes(item.type)?item.type:"全职",
     url:        item.url        ?? "",
     deadline:   item.deadline   ?? "",
+    rolling:    !!item.rolling,
     salary:     item.salary     ?? "",
     location:   item.location   ?? "",
     priority:   item.priority   ?? "中",
@@ -366,7 +368,10 @@ function ToApplyCard({item,urgent,expired,daysLeft,priorityColor,onPromote,onEdi
           <button onClick={()=>setExpanded(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:C.mist,padding:"0 2px"}}>{expanded?"▲":"▼"}</button>
         </div>
       </div>
-      <div style={{fontSize:13,color:C.text,marginBottom:6,fontWeight:500}}>{item.position}</div>
+      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:6}}>
+        <TypeTag t={item.type}/>
+        <span style={{fontSize:13,color:C.text,fontWeight:500}}>{item.position}</span>
+      </div>
       {/* DDL row (计划投递) or 关注原因 (长期关注): always visible */}
       {isWatching?(
         item.watchReason&&(
@@ -374,6 +379,10 @@ function ToApplyCard({item,urgent,expired,daysLeft,priorityColor,onPromote,onEdi
             <span style={{fontSize:12,color:C.textLight}}>🔭 {item.watchReason}</span>
           </div>
         )
+      ):item.rolling?(
+        <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
+          <span style={{fontSize:12,color:C.textLight}}>🔄 滚动招聘（Rolling Basis）</span>
+        </div>
       ):(
         item.deadline&&(
           <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
@@ -525,6 +534,11 @@ function ToApplyForm({initial,companies,onSave,onCancel}){
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <div><label style={lbl}>公司名称 *</label><input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/></div>
         <div><label style={lbl}>职位名称 *</label><input style={inp} value={form.position} onChange={e=>set("position",e.target.value)} placeholder="如：Graduate Engineer"/></div>
+        <div><label style={lbl}>职位类型</label>
+          <select style={inp} value={form.type||"全职"} onChange={e=>set("type",e.target.value)}>
+            {TYPES.map(t=><option key={t}>{t}</option>)}
+          </select>
+        </div>
         {companies&&companies.length>0&&(
           <div style={{gridColumn:"1/-1"}}>
             <label style={lbl}>关联公司（可选）</label>
@@ -564,7 +578,17 @@ function ToApplyForm({initial,companies,onSave,onCancel}){
             )}
           </div>
         ):(
-          <div><label style={lbl}>截止日期</label><input type="date" style={inp} value={form.deadline||""} onChange={e=>set("deadline",e.target.value)}/></div>
+          <div>
+            <label style={lbl}>截止日期</label>
+            {!form.rolling&&<input type="date" style={inp} value={form.deadline||""} onChange={e=>set("deadline",e.target.value)}/>}
+            <label style={{display:"flex",alignItems:"center",gap:6,marginTop:form.rolling?0:8,fontSize:12,color:C.textLight,cursor:"pointer"}}>
+              <input type="checkbox" checked={!!form.rolling} onChange={e=>{
+                const rolling=e.target.checked;
+                setForm(f=>({...f,rolling,deadline:rolling?"":f.deadline}));
+              }}/>
+              滚动招聘（Rolling Basis，无固定截止日期）
+            </label>
+          </div>
         )}
         <div><label style={lbl}>薪资/待遇</label><input style={inp} value={form.salary||""} onChange={e=>set("salary",e.target.value)} placeholder="如：£30k / 25-30k"/></div>
         <div><label style={lbl}>工作地点</label><input style={inp} value={form.location||""} onChange={e=>set("location",e.target.value)} placeholder="如：London / Remote"/></div>
@@ -669,7 +693,7 @@ function App(){
   };
   const delTA=id=>{if(confirm("确认删除？"))setToApply(a=>a.filter(x=>x.id!==id));};
   const promoteTA=item=>{
-    setJobs(j=>[...j,{...EMPTY,company:item.company,position:item.position,url:item.url,note:item.note,id:Date.now()}]);
+    setJobs(j=>[...j,{...EMPTY,company:item.company,position:item.position,type:item.type||"全职",url:item.url,note:item.note,id:Date.now()}]);
     delTA(item.id);
     setMainTab("tracker");
   };

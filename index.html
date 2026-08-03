@@ -56,8 +56,12 @@ const SOURCES=["Boss直聘","猎聘","智联招聘","LinkedIn","Bright Network",
 const TYPES=["全职","实习","应届生项目","科研","兼职","其他"];
 const INDUSTRIES=["汽车/交通","科技/互联网","金融/银行","咨询","能源/环保","制造/工业","医疗/健康","教育","消费/零售","媒体/广告","政府/公共事业","其他"];
 const STAGES=["Online Test","Assessment Centre","Individual Interview","Group Interview","Power Day","Video Interview","Phone Screen","HR Round","Technical Interview","Offer Call","其他"];
+const INTENTS=["计划投递","长期关注"];
+const WATCH_REASONS=["能力/经验暂时不够，想先提升再投","岗位尚未开放申请，等秋招后续批次","优先级较低，先集中精力投更心仪的岗位","还想再深入了解这家公司/岗位，没决定好","硬性门槛不符合（学历、工作年限、身份限制等）","还没想清楚要不要走这个行业/方向","其他"];
 const SCHEMA_VERSION=1;
 const EMPTY={company:"",position:"",type:"全职",industry:"",url:"",date:new Date().toISOString().slice(0,10),source:"Boss直聘",status:"applied",note:"",milestones:[]};
+const EMPTY_TOAPPLY={company:"",position:"",url:"",deadline:"",salary:"",location:"",priority:"中",note:"",intent:"计划投递",watchReason:"",companyId:null};
+const EMPTY_COMPANY={company:"",industry:"",url:"",note:""};
 
 const inp={width:"100%",padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:14,color:C.text,background:C.cream};
 const lbl={fontSize:12,color:C.textLight,marginBottom:4,display:"block",fontWeight:600};
@@ -75,6 +79,33 @@ function migrateJob(job){
     note:       job.note       ?? "",
     milestones: Array.isArray(job.milestones)?job.milestones:[],
     id:         job.id         ?? Date.now(),
+  };
+}
+
+function migrateToApply(item){
+  return {
+    company:    item.company    ?? "",
+    position:   item.position   ?? "",
+    url:        item.url        ?? "",
+    deadline:   item.deadline   ?? "",
+    salary:     item.salary     ?? "",
+    location:   item.location   ?? "",
+    priority:   item.priority   ?? "中",
+    note:       item.note       ?? "",
+    intent:     INTENTS.includes(item.intent)?item.intent:"计划投递",
+    watchReason:item.watchReason?? "",
+    companyId:  item.companyId  ?? null,
+    id:         item.id         ?? Date.now(),
+  };
+}
+
+function migrateCompany(co){
+  return {
+    company:  co.company  ?? "",
+    industry: co.industry ?? "",
+    url:      co.url      ?? "",
+    note:     co.note     ?? "",
+    id:       co.id       ?? Date.now(),
   };
 }
 
@@ -318,6 +349,7 @@ function KanbanCard({job,onEdit,onDel,isDragging,isRejected,onDragStart,onDragEn
 
 function ToApplyCard({item,urgent,expired,daysLeft,priorityColor,onPromote,onEdit,onDel}){
   const [expanded,setExpanded]=useState(false);
+  const isWatching=item.intent==="长期关注";
   const borderColor=urgent?"#e05050":expired?"#bbb":C.border;
   return(
     <div className="card" style={{background:C.white,border:`1.5px solid ${borderColor}`,borderRadius:12,padding:"14px 16px",boxShadow:`0 2px 8px ${C.shadow}`,transition:"box-shadow 0.15s"}}>
@@ -329,21 +361,30 @@ function ToApplyCard({item,urgent,expired,daysLeft,priorityColor,onPromote,onEdi
             :item.company}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+          {isWatching&&<span style={{background:C.frost,color:C.textLight,padding:"1px 8px",borderRadius:10,fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>🔭 长期关注</span>}
           {item.priority&&<span style={{fontSize:11,fontWeight:700,color:priorityColor[item.priority]||C.moss}}>{item.priority}</span>}
           <button onClick={()=>setExpanded(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:C.mist,padding:"0 2px"}}>{expanded?"▲":"▼"}</button>
         </div>
       </div>
       <div style={{fontSize:13,color:C.text,marginBottom:6,fontWeight:500}}>{item.position}</div>
-      {/* DDL row: always visible */}
-      {item.deadline&&(
-        <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
-          <span style={{fontSize:12,color:urgent?"#e05050":expired?"#aaa":C.textLight,fontWeight:urgent?700:400}}>
-            📅 {item.deadline}
-          </span>
-          {urgent&&<span style={{color:"#e05050",fontWeight:700,fontSize:13}}>❗</span>}
-          {expired&&<span style={{color:"#aaa",fontSize:11}}>(已过期)</span>}
-          {!urgent&&!expired&&daysLeft!==null&&daysLeft<=7&&<span style={{fontSize:11,color:C.textLight}}>({daysLeft}天后)</span>}
-        </div>
+      {/* DDL row (计划投递) or 关注原因 (长期关注): always visible */}
+      {isWatching?(
+        item.watchReason&&(
+          <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
+            <span style={{fontSize:12,color:C.textLight}}>🔭 {item.watchReason}</span>
+          </div>
+        )
+      ):(
+        item.deadline&&(
+          <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
+            <span style={{fontSize:12,color:urgent?"#e05050":expired?"#aaa":C.textLight,fontWeight:urgent?700:400}}>
+              📅 {item.deadline}
+            </span>
+            {urgent&&<span style={{color:"#e05050",fontWeight:700,fontSize:13}}>❗</span>}
+            {expired&&<span style={{color:"#aaa",fontSize:11}}>(已过期)</span>}
+            {!urgent&&!expired&&daysLeft!==null&&daysLeft<=7&&<span style={{fontSize:11,color:C.textLight}}>({daysLeft}天后)</span>}
+          </div>
+        )
       )}
       {/* Expanded details */}
       <div className={`collapsible ${expanded?"open":"closed"}`}>
@@ -362,13 +403,86 @@ function ToApplyCard({item,urgent,expired,daysLeft,priorityColor,onPromote,onEdi
   );
 }
 
-function ToApplyForm({initial,onSave,onCancel}){
-  const EMPTY_TA={company:"",position:"",url:"",deadline:"",salary:"",location:"",priority:"中",note:""};
-  const [form,setForm]=useState(initial||EMPTY_TA);
+function CompanyCard({company,positions,onAddPosition,onEdit,onDel}){
+  const [expanded,setExpanded]=useState(false);
+  return(
+    <div className="card" style={{background:C.white,border:`1.5px solid ${C.border}`,borderRadius:12,padding:"14px 16px",boxShadow:`0 2px 8px ${C.shadow}`,transition:"box-shadow 0.15s"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+        <div style={{fontWeight:700,fontSize:15,color:C.fir,wordBreak:"break-word",flex:1,marginRight:8}}>
+          {company.url
+            ?<a href={company.url} title={company.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir,textDecoration:"none"}} onMouseOver={e=>e.currentTarget.style.textDecoration="underline"} onMouseOut={e=>e.currentTarget.style.textDecoration="none"}>{company.company} ↗</a>
+            :company.company}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+          <span style={{background:C.frost,color:C.moss,borderRadius:12,padding:"1px 8px",fontSize:11,fontWeight:700}}>{positions.length} 个职位</span>
+          <button onClick={()=>setExpanded(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:C.mist,padding:"0 2px"}}>{expanded?"▲":"▼"}</button>
+        </div>
+      </div>
+      {company.industry&&<div style={{fontSize:12,color:C.textLight,marginBottom:6}}>{company.industry}</div>}
+      {company.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",marginBottom:6}}>📝 {company.note}</div>}
+      <div className={`collapsible ${expanded?"open":"closed"}`}>
+        <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4,marginBottom:8}}>
+          {positions.length===0&&<div style={{fontSize:12,color:C.mist,textAlign:"center",padding:"8px 0"}}>暂无关联的具体职位</div>}
+          {positions.map(p=>(
+            <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.cream,borderRadius:8,padding:"6px 10px",marginBottom:6,gap:8}}>
+              <span style={{fontSize:12,color:C.text,fontWeight:600,wordBreak:"break-word"}}>{p.position}</span>
+              <span style={{background:p.intent==="长期关注"?C.frost:C.sage,color:p.intent==="长期关注"?C.textLight:C.white,borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>{p.intent}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,marginTop:8}}>
+        <button onClick={onAddPosition} style={{flex:1,padding:"5px 0",borderRadius:7,border:"none",background:C.sage,color:C.white,fontSize:12,cursor:"pointer",fontWeight:600}}>＋ 添加职位</button>
+        <button onClick={onEdit} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:12,cursor:"pointer"}}>编辑</button>
+        <button onClick={onDel} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:12,cursor:"pointer"}}>删除</button>
+      </div>
+    </div>
+  );
+}
+
+function CompanyForm({initial,onSave,onCancel}){
+  const [form,setForm]=useState(initial||EMPTY_COMPANY);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  return(
+    <div>
+      <h3 style={{margin:"0 0 16px",color:C.fir,fontSize:17}}>{initial?.id?"编辑关注公司":"添加关注公司"}</h3>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div style={{gridColumn:"1/-1"}}><label style={lbl}>公司名称 *</label><input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/></div>
+        <div><label style={lbl}>行业</label>
+          <select style={inp} value={form.industry||""} onChange={e=>set("industry",e.target.value)}>
+            <option value="">请选择</option>
+            {INDUSTRIES.map(t=><option key={t}>{t}</option>)}
+          </select>
+        </div>
+        <div><label style={lbl}>公告/官网链接</label><input style={inp} value={form.url||""} onChange={e=>set("url",e.target.value)} placeholder="https://..."/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={lbl}>备注</label><input style={inp} value={form.note||""} onChange={e=>set("note",e.target.value)} placeholder="可选，比如秋招启动时间、了解到的信息"/></div>
+      </div>
+      <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
+        <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
+        <button onClick={()=>form.company&&onSave(form)}
+          style={{padding:"8px 22px",borderRadius:8,border:"none",background:C.fir,color:C.white,cursor:"pointer",fontSize:14,fontWeight:600}}>保存</button>
+      </div>
+    </div>
+  );
+}
+
+function ToApplyForm({initial,companies,onSave,onCancel}){
+  const [form,setForm]=useState(initial||EMPTY_TOAPPLY);
   const [rawText,setRawText]=useState("");
   const [parsing,setParsing]=useState(false);
   const [msg,setMsg]=useState("");
+  const [reasonSelect,setReasonSelect]=useState(()=>{
+    const r=initial?.watchReason||"";
+    if(!r) return WATCH_REASONS[0];
+    return WATCH_REASONS.includes(r)&&r!=="其他"?r:"其他";
+  });
+  const [customReason,setCustomReason]=useState(()=>{
+    const r=initial?.watchReason||"";
+    return (r&&!WATCH_REASONS.includes(r))?r:"";
+  });
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const selectReason=v=>{setReasonSelect(v);set("watchReason",v==="其他"?customReason:v);};
+  const changeCustomReason=v=>{setCustomReason(v);set("watchReason",v);};
 
   const parse=async()=>{
     if(!rawText.trim()) return;
@@ -411,7 +525,47 @@ function ToApplyForm({initial,onSave,onCancel}){
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <div><label style={lbl}>公司名称 *</label><input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/></div>
         <div><label style={lbl}>职位名称 *</label><input style={inp} value={form.position} onChange={e=>set("position",e.target.value)} placeholder="如：Graduate Engineer"/></div>
-        <div><label style={lbl}>截止日期</label><input type="date" style={inp} value={form.deadline||""} onChange={e=>set("deadline",e.target.value)}/></div>
+        {companies&&companies.length>0&&(
+          <div style={{gridColumn:"1/-1"}}>
+            <label style={lbl}>关联公司（可选）</label>
+            <select style={inp} value={form.companyId??""} onChange={e=>{
+              const cid=e.target.value?Number(e.target.value):null;
+              set("companyId",cid);
+              const co=companies.find(c=>c.id===cid);
+              if(co) set("company",co.company);
+            }}>
+              <option value="">不关联</option>
+              {companies.map(c=><option key={c.id} value={c.id}>{c.company}</option>)}
+            </select>
+          </div>
+        )}
+        <div style={{gridColumn:"1/-1"}}>
+          <label style={lbl}>关注类型</label>
+          <div style={{display:"flex",gap:8}}>
+            {INTENTS.map(v=>(
+              <button key={v} type="button" onClick={()=>{
+                set("intent",v);
+                if(v==="长期关注"&&!form.watchReason) set("watchReason",reasonSelect==="其他"?customReason:reasonSelect);
+              }}
+                style={{flex:1,padding:"8px 0",borderRadius:8,border:`1.5px solid ${form.intent===v?C.sage:C.border}`,
+                  background:form.intent===v?C.frost:C.white,color:form.intent===v?C.moss:C.textLight,
+                  fontWeight:form.intent===v?700:500,fontSize:13,cursor:"pointer"}}>{v}</button>
+            ))}
+          </div>
+        </div>
+        {form.intent==="长期关注"?(
+          <div style={{gridColumn:"1/-1"}}>
+            <label style={lbl}>关注原因</label>
+            <select style={inp} value={reasonSelect} onChange={e=>selectReason(e.target.value)}>
+              {WATCH_REASONS.map(r=><option key={r} value={r}>{r}</option>)}
+            </select>
+            {reasonSelect==="其他"&&(
+              <input style={{...inp,marginTop:8}} value={customReason} onChange={e=>changeCustomReason(e.target.value)} placeholder="请输入具体原因"/>
+            )}
+          </div>
+        ):(
+          <div><label style={lbl}>截止日期</label><input type="date" style={inp} value={form.deadline||""} onChange={e=>set("deadline",e.target.value)}/></div>
+        )}
         <div><label style={lbl}>薪资/待遇</label><input style={inp} value={form.salary||""} onChange={e=>set("salary",e.target.value)} placeholder="如：£30k / 25-30k"/></div>
         <div><label style={lbl}>工作地点</label><input style={inp} value={form.location||""} onChange={e=>set("location",e.target.value)} placeholder="如：London / Remote"/></div>
         <div><label style={lbl}>优先级</label>
@@ -424,7 +578,7 @@ function ToApplyForm({initial,onSave,onCancel}){
       </div>
       <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
         <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
-        <button onClick={()=>form.company&&form.position&&onSave(form)}
+        <button onClick={()=>form.company&&form.position&&onSave(form.intent==="长期关注"?form:{...form,watchReason:""})}
           style={{padding:"8px 22px",borderRadius:8,border:"none",background:C.fir,color:C.white,cursor:"pointer",fontSize:14,fontWeight:600}}>保存</button>
       </div>
     </div>
@@ -433,13 +587,16 @@ function ToApplyForm({initial,onSave,onCancel}){
 
 function App(){
   const [jobs,setJobs]=useState(()=>{try{return JSON.parse(localStorage.getItem("jt4")||"[]").map(migrateJob)}catch{return []}});
-  const [toApply,setToApply]=useState(()=>{try{return JSON.parse(localStorage.getItem("jt4_toApply")||"[]")}catch{return []}});
+  const [toApply,setToApply]=useState(()=>{try{return JSON.parse(localStorage.getItem("jt4_toApply")||"[]").map(migrateToApply)}catch{return []}});
+  const [companies,setCompanies]=useState(()=>{try{return JSON.parse(localStorage.getItem("jt4_companies")||"[]").map(migrateCompany)}catch{return []}});
   const [mainTab,setMainTab]=useState("tracker");
   const [view,setView]=useState("看板");
   const [modal,setModal]=useState(null);
   const [taModal,setTaModal]=useState(false);
+  const [cModal,setCModal]=useState(false);
   const [filter,setFilter]=useState("all");
   const [typeFilter,setTypeFilter]=useState("all");
+  const [taFilter,setTaFilter]=useState("all");
   const [dragId,setDragId]=useState(null);
   const dragOver=useRef(null);
   const dragIdRef=useRef(null);
@@ -462,6 +619,7 @@ function App(){
 
   useEffect(()=>{try{localStorage.setItem("jt4",JSON.stringify(jobs))}catch{}},[jobs]);
   useEffect(()=>{try{localStorage.setItem("jt4_toApply",JSON.stringify(toApply))}catch{}},[toApply]);
+  useEffect(()=>{try{localStorage.setItem("jt4_companies",JSON.stringify(companies))}catch{}},[companies]);
 
   const save=f=>{
     if(modal==="add") setJobs(j=>[...j,{...f,id:Date.now()}]);
@@ -505,7 +663,7 @@ function App(){
   const selStyle={padding:"6px 12px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.text,fontSize:13,cursor:"pointer"};
 
   const saveTA=item=>{
-    if(taModal==="add") setToApply(a=>[...a,{...item,id:Date.now()}]);
+    if(taModal==="add"||!taModal.id) setToApply(a=>[...a,{...item,id:Date.now()}]);
     else setToApply(a=>a.map(x=>x.id===taModal.id?{...taModal,...item}:x));
     setTaModal(false);
   };
@@ -515,6 +673,13 @@ function App(){
     delTA(item.id);
     setMainTab("tracker");
   };
+
+  const saveCo=item=>{
+    if(cModal==="add"||!cModal.id) setCompanies(c=>[...c,{...item,id:Date.now()}]);
+    else setCompanies(c=>c.map(x=>x.id===cModal.id?{...cModal,...item}:x));
+    setCModal(false);
+  };
+  const delCo=id=>{if(confirm("确认删除？关联到该公司的具体职位不会被删除"))setCompanies(c=>c.filter(x=>x.id!==id));};
 
   const mainTabBtn=active=>({padding:"8px 20px",borderRadius:20,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,background:active?C.white:C.fir,color:active?C.fir:C.mist,transition:"all 0.2s",boxShadow:active?"0 2px 8px rgba(47,69,56,0.15)":"none"});
 
@@ -526,6 +691,10 @@ function App(){
           <div style={{color:C.mist,fontSize:11}}>Job Application Tracker</div>
         </div>
         <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4}}>
+          <button style={mainTabBtn(mainTab==="companies")} onClick={()=>setMainTab("companies")}>
+            🏢 公司关注
+            {companies.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{companies.length}</span>}
+          </button>
           <button style={mainTabBtn(mainTab==="tracker")} onClick={()=>setMainTab("tracker")}>📋 投递追踪</button>
           <button style={mainTabBtn(mainTab==="toApply")} onClick={()=>setMainTab("toApply")}>
             📌 待投递
@@ -543,10 +712,36 @@ function App(){
           {mainTab==="toApply"&&
             <button onClick={()=>setTaModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加待投递</button>
           }
+          {mainTab==="companies"&&
+            <button onClick={()=>setCModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加关注公司</button>
+          }
         </div>
       </div>
 
       <div style={{maxWidth:1120,margin:"0 auto",padding:"20px 14px"}}>
+
+        {mainTab==="companies"&&(
+          <div className="tab-content">
+            {companies.length===0&&(
+              <div style={{textAlign:"center",padding:"60px 20px",color:C.mist}}>
+                <div style={{fontSize:36,marginBottom:12}}>🏢</div>
+                <div style={{fontSize:15,fontWeight:600,marginBottom:6}}>暂无关注公司</div>
+                <div style={{fontSize:13}}>看到心仪公司的秋招公告，但还没确定具体岗位时，先在这里记一笔</div>
+              </div>
+            )}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+              {companies.map(co=>{
+                const positions=toApply.filter(t=>t.companyId===co.id);
+                return(
+                  <CompanyCard key={co.id} company={co} positions={positions}
+                    onAddPosition={()=>setTaModal({...EMPTY_TOAPPLY,company:co.company,companyId:co.id})}
+                    onEdit={()=>setCModal(co)}
+                    onDel={()=>delCo(co.id)}/>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {mainTab==="toApply"&&(
           <div className="tab-content">
@@ -557,8 +752,17 @@ function App(){
                 <div style={{fontSize:13}}>点击「添加待投递」先收藏感兴趣的职位</div>
               </div>
             )}
+            {toApply.length>0&&(
+              <div style={{display:"flex",gap:3,background:C.frost,borderRadius:24,padding:3,marginBottom:16,width:"fit-content"}}>
+                {[
+                  {key:"all",label:`全部 ${toApply.length}`},
+                  {key:"计划投递",label:`计划投递 ${toApply.filter(t=>t.intent==="计划投递").length}`},
+                  {key:"长期关注",label:`长期关注 ${toApply.filter(t=>t.intent==="长期关注").length}`},
+                ].map(f=><button key={f.key} style={tabBtn(taFilter===f.key)} onClick={()=>setTaFilter(f.key)}>{f.label}</button>)}
+              </div>
+            )}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
-              {[...toApply].sort((a,b)=>{
+              {[...toApply].filter(t=>taFilter==="all"||t.intent===taFilter).sort((a,b)=>{
                 if(!a.deadline&&!b.deadline) return 0;
                 if(!a.deadline) return 1;
                 if(!b.deadline) return -1;
@@ -681,7 +885,10 @@ function App(){
         <JobForm initial={modal==="add"?null:modal} onSave={save} onCancel={()=>setModal(null)}/>
       </Modal>
       <Modal open={!!taModal} onClose={()=>setTaModal(false)}>
-        <ToApplyForm initial={taModal==="add"?null:taModal} onSave={saveTA} onCancel={()=>setTaModal(false)}/>
+        <ToApplyForm initial={taModal==="add"?null:taModal} companies={companies} onSave={saveTA} onCancel={()=>setTaModal(false)}/>
+      </Modal>
+      <Modal open={!!cModal} onClose={()=>setCModal(false)}>
+        <CompanyForm initial={cModal==="add"?null:cModal} onSave={saveCo} onCancel={()=>setCModal(false)}/>
       </Modal>
     </div>
   );

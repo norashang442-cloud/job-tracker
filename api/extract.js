@@ -52,7 +52,7 @@ ${content}
 提取字段：
 - company: 公司/雇主名称
 - position: 职位名称
-- industry: 公司所属行业，只能是以下之一：汽车/交通、科技/互联网、金融/银行、咨询、能源/环保、制造/工业、医疗/健康、教育、消费/零售、媒体/广告、政府/公共事业、其他
+- industry: 公司所属行业，只能是以下之一：汽车/交通、科技/互联网、金融/银行、咨询、能源/环保、制造/工业、物流/供应链、医疗/健康、教育、消费/零售、媒体/广告、政府/公共事业、其他
 - type: 职位类型，只能是以下之一：全职、实习、应届生项目、科研、兼职、其他（graduate/scheme→应届生项目，intern→实习，research→科研）
 - source: 来源平台，只能是以下之一：Boss直聘、猎聘、智联招聘、LinkedIn、Bright Network、Glassdoor、Indeed、拉勾网、前程无忧、牛客网、脉脉、Reed、TotalJobs、Graduateland、内推、官网、其他
 

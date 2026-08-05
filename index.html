@@ -710,9 +710,13 @@ function App(){
   return(
     <div style={{minHeight:"100vh",background:C.cream}}>
       <div style={{background:C.fir,padding:"16px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-        <div style={{display:"flex",flexDirection:"column",gap:2}}>
-          <div style={{color:C.frost,fontSize:18,fontWeight:700,letterSpacing:0.5}}>求职进度追踪</div>
-          <div style={{color:C.mist,fontSize:11}}>Job Application Tracker</div>
+        <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            <div style={{color:C.frost,fontSize:18,fontWeight:700,letterSpacing:0.5}}>求职进度追踪</div>
+            <div style={{color:C.mist,fontSize:11}}>Job Application Tracker</div>
+          </div>
+          <a href="phd.html" style={{color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"}}
+            onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>🎓 申博追踪</a>
         </div>
         <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4}}>
           <button style={mainTabBtn(mainTab==="companies")} onClick={()=>setMainTab("companies")}>

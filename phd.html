@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>申博进度追踪</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'PingFang SC','Inter',sans-serif;background:#F2F7F1;color:#1C2E22;}
+button:focus,input:focus,select:focus,textarea:focus{outline:2px solid #5C7A60;outline-offset:1px;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:#F2F7F1;}
+::-webkit-scrollbar-thumb{background:#A8C5A0;border-radius:3px;}
+.card:hover{box-shadow:0 4px 16px rgba(47,69,56,0.2)!important;}
+
+/* Button press effect */
+button{transition:transform 0.1s,box-shadow 0.1s,background 0.15s!important;}
+button:hover:not(:disabled){transform:scale(0.97);}
+button:active:not(:disabled){transform:scale(0.95);}
+
+/* Modal animations */
+@keyframes backdropIn{from{opacity:0}to{opacity:1}}
+@keyframes modalIn{from{opacity:0;transform:translateY(12px) scale(0.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+.modal-backdrop{animation:backdropIn 0.2s ease}
+.modal-box{animation:modalIn 0.22s cubic-bezier(0.34,1.56,0.64,1)}
+
+/* Tab fade */
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.tab-content{animation:fadeIn 0.18s ease}
+
+/* Collapsible slide */
+.collapsible{overflow:hidden;transition:max-height 0.22s cubic-bezier(0.4,0,0.2,1),opacity 0.18s ease;}
+.collapsible.open{max-height:600px;opacity:1;}
+.collapsible.closed{max-height:0;opacity:0;}
+</style>
+</head>
+<body><div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect}=React;
+const C={
+  fir:"#2F4538",moss:"#3D5A47",sage:"#5C7A60",reed:"#7A9E7E",
+  mist:"#A8C5A0",frost:"#D4E8D0",cream:"#F2F7F1",white:"#FFFFFF",
+  text:"#1C2E22",textLight:"#4A6350",border:"#C2D9BE",shadow:"rgba(47,69,56,0.12)"
+};
+const PROF_STATUS=[
+  {key:"pending", label:"待发送", color:"#6B6B6B",bg:"#ECECEC"},
+  {key:"sent",    label:"已发送", color:"#5C7A60",bg:"#E8F2E8"},
+  {key:"replied", label:"已回复", color:"#7A6E2F",bg:"#F5F2DC"},
+  {key:"talked",  label:"已约谈", color:"#2F5A7A",bg:"#DCF0F5"},
+  {key:"success", label:"成功",   color:"#2F6640",bg:"#D4EDD8"},
+  {key:"failed",  label:"未成功", color:"#7A3030",bg:"#F5DCDC"},
+];
+const APP_STATUS=[
+  {key:"prep",      label:"材料准备中",  color:"#6B6B6B",bg:"#ECECEC"},
+  {key:"submitted", label:"已提交",     color:"#5C7A60",bg:"#E8F2E8"},
+  {key:"review",    label:"审核/面试中", color:"#2F5A7A",bg:"#DCF0F5"},
+  {key:"admitted",  label:"已录取",     color:"#2F6640",bg:"#D4EDD8"},
+  {key:"waitlist",  label:"Waitlist",  color:"#7A6E2F",bg:"#F5F2DC"},
+  {key:"rejected",  label:"未录取",     color:"#7A3030",bg:"#F5DCDC"},
+];
+const EMPTY_PROF={name:"",institution:"",researchArea:"",status:"pending",url:"",note:"",applicationIds:[],contacts:[]};
+const EMPTY_APP={school:"",program:"",cycle:"",deadline:"",rolling:false,status:"prep",url:"",note:""};
+
+const inp={width:"100%",padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:14,color:C.text,background:C.cream};
+const lbl={fontSize:12,color:C.textLight,marginBottom:4,display:"block",fontWeight:600};
+
+function migrateProfessor(p){
+  return {
+    name:          p.name          ?? "",
+    institution:   p.institution   ?? "",
+    researchArea:  p.researchArea  ?? "",
+    status:        PROF_STATUS.some(s=>s.key===p.status)?p.status:"pending",
+    url:           p.url           ?? "",
+    note:          p.note          ?? "",
+    applicationIds:Array.isArray(p.applicationIds)?p.applicationIds:[],
+    contacts:      Array.isArray(p.contacts)?p.contacts:[],
+    id:            p.id            ?? Date.now(),
+  };
+}
+
+function migrateApplication(a){
+  return {
+    school:  a.school  ?? "",
+    program: a.program ?? "",
+    cycle:   a.cycle   ?? "",
+    deadline:a.deadline?? "",
+    rolling: !!a.rolling,
+    status:  APP_STATUS.some(s=>s.key===a.status)?a.status:"prep",
+    url:     a.url     ?? "",
+    note:    a.note    ?? "",
+    id:      a.id      ?? Date.now(),
+  };
+}
+
+function StatusTag({statusList,s}){
+  const x=statusList.find(i=>i.key===s)||statusList[0];
+  return <span style={{background:x.bg,color:x.color,padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>{x.label}</span>;
+}
+
+function Modal({open,onClose,children}){
+  if(!open) return null;
+  return(
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} className="modal-backdrop"
+      style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.38)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div className="modal-box" style={{background:C.white,borderRadius:16,padding:24,width:500,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:`0 8px 32px ${C.shadow}`}}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ContactLog({entries,onChange}){
+  const [date,setDate]=useState(new Date().toISOString().slice(0,10));
+  const [note,setNote]=useState("");
+  const add=()=>{
+    if(!note.trim()) return;
+    onChange([...entries,{id:Date.now(),date,note}].sort((a,b)=>a.date.localeCompare(b.date)));
+    setNote("");
+  };
+  const remove=id=>onChange(entries.filter(m=>m.id!==id));
+  return(
+    <div style={{marginTop:4}}>
+      {entries.length>0&&(
+        <div style={{marginBottom:12,position:"relative",paddingLeft:16}}>
+          <div style={{position:"absolute",left:6,top:0,bottom:0,width:2,background:C.frost,borderRadius:2}}/>
+          {entries.map(m=>(
+            <div key={m.id} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8,position:"relative"}}>
+              <div style={{width:10,height:10,borderRadius:"50%",background:C.sage,flexShrink:0,marginTop:3,zIndex:1}}/>
+              <div style={{flex:1,background:C.cream,borderRadius:8,padding:"6px 10px",border:`1px solid ${C.border}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:11,color:C.mist}}>{m.date}</span>
+                  <button onClick={()=>remove(m.id)} style={{background:"none",border:"none",color:"#b05050",cursor:"pointer",fontSize:13,lineHeight:1}}>×</button>
+                </div>
+                <div style={{fontSize:12,color:C.text,marginTop:2,wordBreak:"break-word"}}>{m.note}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{background:C.frost,borderRadius:10,padding:10}}>
+        <input type="date" style={{...inp,fontSize:13,width:160,marginBottom:8}} value={date} onChange={e=>setDate(e.target.value)}/>
+        <div style={{display:"flex",gap:8}}>
+          <input style={{...inp,fontSize:12,flex:1}} value={note} onChange={e=>setNote(e.target.value)} placeholder="记录这次沟通/反馈内容…"/>
+          <button onClick={add} style={{padding:"8px 14px",borderRadius:8,border:"none",background:C.sage,color:C.white,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>＋ 添加</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfessorForm({initial,applications,researchAreas,onSave,onCancel}){
+  const [form,setForm]=useState(initial||EMPTY_PROF);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  return(
+    <div>
+      <h3 style={{margin:"0 0 16px",color:C.fir,fontSize:17}}>{initial?.id?"编辑套磁记录":"添加套磁记录"}</h3>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div><label style={lbl}>导师姓名 *</label><input style={inp} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="如：Prof. Smith"/></div>
+        <div><label style={lbl}>所在院校 *</label><input style={inp} value={form.institution} onChange={e=>set("institution",e.target.value)} placeholder="如：MIT"/></div>
+        <div style={{gridColumn:"1/-1"}}>
+          <label style={lbl}>研究方向</label>
+          <input list="research-area-options" style={inp} value={form.researchArea||""} onChange={e=>set("researchArea",e.target.value)} placeholder="如：机器学习、材料科学…"/>
+          <datalist id="research-area-options">
+            {researchAreas.map(r=><option key={r} value={r}/>)}
+          </datalist>
+        </div>
+        <div><label style={lbl}>套磁进度</label>
+          <select style={inp} value={form.status} onChange={e=>set("status",e.target.value)}>
+            {PROF_STATUS.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
+        </div>
+        <div><label style={lbl}>个人主页/Lab链接</label><input style={inp} value={form.url||""} onChange={e=>set("url",e.target.value)} placeholder="https://..."/></div>
+        {applications.length>0&&(
+          <div style={{gridColumn:"1/-1"}}>
+            <label style={lbl}>关联网申项目（可选，可多选）</label>
+            <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:160,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:8,padding:8}}>
+              {applications.map(a=>(
+                <label key={a.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",color:C.text}}>
+                  <input type="checkbox" checked={(form.applicationIds||[]).includes(a.id)} onChange={e=>{
+                    const ids=form.applicationIds||[];
+                    set("applicationIds", e.target.checked?[...ids,a.id]:ids.filter(id=>id!==a.id));
+                  }}/>
+                  {a.school} · {a.program}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        <div style={{gridColumn:"1/-1"}}><label style={lbl}>备注</label><input style={inp} value={form.note||""} onChange={e=>set("note",e.target.value)} placeholder="可选"/></div>
+      </div>
+      <div style={{marginTop:16}}>
+        <label style={{...lbl,fontSize:13,color:C.moss}}>📝 沟通与反馈记录</label>
+        <ContactLog entries={form.contacts||[]} onChange={v=>set("contacts",v)}/>
+      </div>
+      <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
+        <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
+        <button onClick={()=>form.name&&form.institution&&onSave(form)}
+          style={{padding:"8px 22px",borderRadius:8,border:"none",background:C.fir,color:C.white,cursor:"pointer",fontSize:14,fontWeight:600}}>保存</button>
+      </div>
+    </div>
+  );
+}
+
+function ProfessorCard({prof,linkedApps,onEdit,onDel}){
+  const [expanded,setExpanded]=useState(false);
+  const contacts=prof.contacts||[];
+  const latest=contacts.length>0?contacts[contacts.length-1]:null;
+  return(
+    <div className="card" style={{background:C.white,border:`1.5px solid ${C.border}`,borderRadius:12,padding:"14px 16px",boxShadow:`0 2px 8px ${C.shadow}`,transition:"box-shadow 0.15s"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+        <div style={{fontWeight:700,fontSize:14,color:C.fir,wordBreak:"break-word",flex:1,marginRight:8}}>
+          {prof.url
+            ?<a href={prof.url} title={prof.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir,textDecoration:"none"}} onMouseOver={e=>e.currentTarget.style.textDecoration="underline"} onMouseOut={e=>e.currentTarget.style.textDecoration="none"}>{prof.name} ↗</a>
+            :prof.name}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+          <StatusTag statusList={PROF_STATUS} s={prof.status}/>
+          <button onClick={()=>setExpanded(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:C.mist,padding:"0 2px"}}>{expanded?"▲":"▼"}</button>
+        </div>
+      </div>
+      <div style={{fontSize:12,color:C.textLight,marginBottom:6}}>{prof.institution}{prof.researchArea?` · ${prof.researchArea}`:""}</div>
+      {latest&&(
+        <div style={{background:C.frost,borderRadius:7,padding:"5px 8px",marginBottom:6,fontSize:11}}>
+          <span style={{color:C.mist}}>{latest.date}</span> <span style={{color:C.text}}>{latest.note}</span>
+        </div>
+      )}
+      <div className={`collapsible ${expanded?"open":"closed"}`}>
+        <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4,marginBottom:8}}>
+          {contacts.length>1&&<div style={{fontSize:11,color:C.textLight,marginBottom:6}}>共 {contacts.length} 条沟通记录</div>}
+          {linkedApps.length>0&&(
+            <div style={{fontSize:12,color:C.textLight,marginBottom:6,wordBreak:"break-word"}}>🎓 关联项目：{linkedApps.map(a=>`${a.school}·${a.program}`).join('，')}</div>
+          )}
+          {prof.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",wordBreak:"break-word"}}>📝 {prof.note}</div>}
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,marginTop:8}}>
+        <button onClick={onEdit} style={{flex:1,padding:"5px 0",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:12,cursor:"pointer"}}>编辑</button>
+        <button onClick={onDel} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:12,cursor:"pointer"}}>删除</button>
+      </div>
+    </div>
+  );
+}
+
+function ApplicationForm({initial,onSave,onCancel}){
+  const [form,setForm]=useState(initial||EMPTY_APP);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  return(
+    <div>
+      <h3 style={{margin:"0 0 16px",color:C.fir,fontSize:17}}>{initial?.id?"编辑网申项目":"添加网申项目"}</h3>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div><label style={lbl}>学校 *</label><input style={inp} value={form.school} onChange={e=>set("school",e.target.value)} placeholder="如：Stanford University"/></div>
+        <div><label style={lbl}>项目/院系 *</label><input style={inp} value={form.program} onChange={e=>set("program",e.target.value)} placeholder="如：Computer Science PhD"/></div>
+        <div><label style={lbl}>申请批次</label><input style={inp} value={form.cycle||""} onChange={e=>set("cycle",e.target.value)} placeholder="如：Fall 2027"/></div>
+        <div><label style={lbl}>网申状态</label>
+          <select style={inp} value={form.status} onChange={e=>set("status",e.target.value)}>
+            {APP_STATUS.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lbl}>截止日期</label>
+          {!form.rolling&&<input type="date" style={inp} value={form.deadline||""} onChange={e=>set("deadline",e.target.value)}/>}
+          <label style={{display:"flex",alignItems:"center",gap:6,marginTop:form.rolling?0:8,fontSize:12,color:C.textLight,cursor:"pointer"}}>
+            <input type="checkbox" checked={!!form.rolling} onChange={e=>{
+              const rolling=e.target.checked;
+              setForm(f=>({...f,rolling,deadline:rolling?"":f.deadline}));
+            }}/>
+            滚动招生（无固定截止日期）
+          </label>
+        </div>
+        <div><label style={lbl}>项目官网链接</label><input style={inp} value={form.url||""} onChange={e=>set("url",e.target.value)} placeholder="https://..."/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={lbl}>备注</label><input style={inp} value={form.note||""} onChange={e=>set("note",e.target.value)} placeholder="可选"/></div>
+      </div>
+      <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
+        <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
+        <button onClick={()=>form.school&&form.program&&onSave(form)}
+          style={{padding:"8px 22px",borderRadius:8,border:"none",background:C.fir,color:C.white,cursor:"pointer",fontSize:14,fontWeight:600}}>保存</button>
+      </div>
+    </div>
+  );
+}
+
+function ApplicationCard({app,linkedProfs,onEdit,onDel}){
+  const [expanded,setExpanded]=useState(false);
+  const today=new Date(); today.setHours(0,0,0,0);
+  const ddlDate=app.deadline?new Date(app.deadline):null;
+  const daysLeft=ddlDate?Math.ceil((ddlDate-today)/(1000*60*60*24)):null;
+  const urgent=daysLeft!==null&&daysLeft<=7&&daysLeft>=0;
+  const expired=daysLeft!==null&&daysLeft<0;
+  const borderColor=urgent?"#e05050":expired?"#bbb":C.border;
+  return(
+    <div className="card" style={{background:C.white,border:`1.5px solid ${borderColor}`,borderRadius:12,padding:"14px 16px",boxShadow:`0 2px 8px ${C.shadow}`,transition:"box-shadow 0.15s"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+        <div style={{fontWeight:700,fontSize:14,color:C.fir,wordBreak:"break-word",flex:1,marginRight:8}}>
+          {app.url
+            ?<a href={app.url} title={app.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir,textDecoration:"none"}} onMouseOver={e=>e.currentTarget.style.textDecoration="underline"} onMouseOut={e=>e.currentTarget.style.textDecoration="none"}>{app.school} ↗</a>
+            :app.school}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+          <StatusTag statusList={APP_STATUS} s={app.status}/>
+          <button onClick={()=>setExpanded(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:C.mist,padding:"0 2px"}}>{expanded?"▲":"▼"}</button>
+        </div>
+      </div>
+      <div style={{fontSize:13,color:C.text,marginBottom:6,fontWeight:500}}>{app.program}{app.cycle?` · ${app.cycle}`:""}</div>
+      {app.rolling?(
+        <div style={{fontSize:12,color:C.textLight,marginBottom:6}}>🔄 滚动招生（无固定截止日期）</div>
+      ):app.deadline&&(
+        <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
+          <span style={{fontSize:12,color:urgent?"#e05050":expired?"#aaa":C.textLight,fontWeight:urgent?700:400}}>📅 {app.deadline}</span>
+          {urgent&&<span style={{color:"#e05050",fontWeight:700,fontSize:13}}>❗</span>}
+          {expired&&<span style={{color:"#aaa",fontSize:11}}>(已过期)</span>}
+        </div>
+      )}
+      <div className={`collapsible ${expanded?"open":"closed"}`}>
+        <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4,marginBottom:8}}>
+          {linkedProfs.length>0&&(
+            <div style={{fontSize:12,color:C.textLight,marginBottom:6,wordBreak:"break-word"}}>🧑‍🏫 关联导师：{linkedProfs.map(p=>p.name).join('，')}</div>
+          )}
+          {app.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",wordBreak:"break-word"}}>📝 {app.note}</div>}
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,marginTop:8}}>
+        <button onClick={onEdit} style={{flex:1,padding:"5px 0",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:12,cursor:"pointer"}}>编辑</button>
+        <button onClick={onDel} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:12,cursor:"pointer"}}>删除</button>
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const [professors,setProfessors]=useState(()=>{try{return JSON.parse(localStorage.getItem("phd_professors")||"[]").map(migrateProfessor)}catch{return []}});
+  const [applications,setApplications]=useState(()=>{try{return JSON.parse(localStorage.getItem("phd_applications")||"[]").map(migrateApplication)}catch{return []}});
+  const [mainTab,setMainTab]=useState("professors");
+  const [pModal,setPModal]=useState(null);
+  const [aModal,setAModal]=useState(null);
+  const [pFilter,setPFilter]=useState("all");
+  const [aFilter,setAFilter]=useState("all");
+
+  useEffect(()=>{try{localStorage.setItem("phd_professors",JSON.stringify(professors))}catch{}},[professors]);
+  useEffect(()=>{try{localStorage.setItem("phd_applications",JSON.stringify(applications))}catch{}},[applications]);
+
+  const saveProf=item=>{
+    if(pModal==="add") setProfessors(p=>[...p,{...item,id:Date.now()}]);
+    else setProfessors(p=>p.map(x=>x.id===pModal.id?{...pModal,...item}:x));
+    setPModal(null);
+  };
+  const delProf=id=>{if(confirm("确认删除？"))setProfessors(p=>p.filter(x=>x.id!==id));};
+
+  const saveApp=item=>{
+    if(aModal==="add") setApplications(a=>[...a,{...item,id:Date.now()}]);
+    else setApplications(a=>a.map(x=>x.id===aModal.id?{...aModal,...item}:x));
+    setAModal(null);
+  };
+  const delApp=id=>{if(confirm("确认删除？"))setApplications(a=>a.filter(x=>x.id!==id));};
+
+  const researchAreas=[...new Set(professors.map(p=>p.researchArea).filter(Boolean))].sort();
+
+  const mainTabBtn=active=>({padding:"8px 20px",borderRadius:20,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,background:active?C.white:C.fir,color:active?C.fir:C.mist,transition:"all 0.2s",boxShadow:active?"0 2px 8px rgba(47,69,56,0.15)":"none"});
+  const selStyle={padding:"6px 12px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.text,fontSize:13,cursor:"pointer"};
+
+  const filteredProfs=professors.filter(p=>pFilter==="all"||p.status===pFilter);
+  const filteredApps=applications.filter(a=>aFilter==="all"||a.status===aFilter);
+
+  return(
+    <div style={{minHeight:"100vh",background:C.cream}}>
+      <div style={{background:C.fir,padding:"16px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            <div style={{color:C.frost,fontSize:18,fontWeight:700,letterSpacing:0.5}}>申博进度追踪</div>
+            <div style={{color:C.mist,fontSize:11}}>PhD Application Tracker</div>
+          </div>
+          <a href="index.html" style={{color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"}}
+            onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>📋 秋招追踪</a>
+        </div>
+        <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4}}>
+          <button style={mainTabBtn(mainTab==="professors")} onClick={()=>setMainTab("professors")}>
+            🧑‍🏫 套磁记录
+            {professors.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{professors.length}</span>}
+          </button>
+          <button style={mainTabBtn(mainTab==="applications")} onClick={()=>setMainTab("applications")}>
+            🎓 网申项目
+            {applications.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{applications.length}</span>}
+          </button>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          {mainTab==="professors"&&<button onClick={()=>setPModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加套磁记录</button>}
+          {mainTab==="applications"&&<button onClick={()=>setAModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加网申项目</button>}
+        </div>
+      </div>
+
+      <div style={{maxWidth:1120,margin:"0 auto",padding:"20px 14px"}}>
+
+        {mainTab==="professors"&&(
+          <div className="tab-content">
+            {professors.length===0&&(
+              <div style={{textAlign:"center",padding:"60px 20px",color:C.mist}}>
+                <div style={{fontSize:36,marginBottom:12}}>🧑‍🏫</div>
+                <div style={{fontSize:15,fontWeight:600,marginBottom:6}}>暂无套磁记录</div>
+                <div style={{fontSize:13}}>点击「添加套磁记录」开始记录联系过的导师</div>
+              </div>
+            )}
+            {professors.length>0&&(
+              <div style={{marginBottom:16}}>
+                <select style={selStyle} value={pFilter} onChange={e=>setPFilter(e.target.value)}>
+                  <option value="all">全部状态</option>
+                  {PROF_STATUS.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+                </select>
+              </div>
+            )}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+              {filteredProfs.map(prof=>{
+                const linkedApps=applications.filter(a=>(prof.applicationIds||[]).includes(a.id));
+                return <ProfessorCard key={prof.id} prof={prof} linkedApps={linkedApps} onEdit={()=>setPModal(prof)} onDel={()=>delProf(prof.id)}/>;
+              })}
+            </div>
+          </div>
+        )}
+
+        {mainTab==="applications"&&(
+          <div className="tab-content">
+            {applications.length===0&&(
+              <div style={{textAlign:"center",padding:"60px 20px",color:C.mist}}>
+                <div style={{fontSize:36,marginBottom:12}}>🎓</div>
+                <div style={{fontSize:15,fontWeight:600,marginBottom:6}}>暂无网申项目</div>
+                <div style={{fontSize:13}}>点击「添加网申项目」开始记录申请进度</div>
+              </div>
+            )}
+            {applications.length>0&&(
+              <div style={{marginBottom:16}}>
+                <select style={selStyle} value={aFilter} onChange={e=>setAFilter(e.target.value)}>
+                  <option value="all">全部状态</option>
+                  {APP_STATUS.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+                </select>
+              </div>
+            )}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+              {filteredApps.map(app=>{
+                const linkedProfs=professors.filter(p=>(p.applicationIds||[]).includes(app.id));
+                return <ApplicationCard key={app.id} app={app} linkedProfs={linkedProfs} onEdit={()=>setAModal(app)} onDel={()=>delApp(app.id)}/>;
+              })}
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      <Modal open={!!pModal} onClose={()=>setPModal(null)}>
+        <ProfessorForm initial={pModal==="add"?null:pModal} applications={applications} researchAreas={researchAreas} onSave={saveProf} onCancel={()=>setPModal(null)}/>
+      </Modal>
+      <Modal open={!!aModal} onClose={()=>setAModal(null)}>
+        <ApplicationForm initial={aModal==="add"?null:aModal} onSave={saveApp} onCancel={()=>setAModal(null)}/>
+      </Modal>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

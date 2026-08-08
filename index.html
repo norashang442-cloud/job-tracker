@@ -64,6 +64,7 @@ const EMPTY_TOAPPLY={company:"",position:"",type:"全职",url:"",deadline:"",rol
 const EMPTY_COMPANY={company:"",industry:"",url:"",note:""};
 
 const inp={width:"100%",padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:14,color:C.text,background:C.cream};
+const inpArea={...inp,minHeight:64,resize:"vertical",fontFamily:"inherit",lineHeight:1.5};
 const lbl={fontSize:12,color:C.textLight,marginBottom:4,display:"block",fontWeight:600};
 
 function migrateJob(job){
@@ -278,7 +279,7 @@ function JobForm({initial,onSave,onCancel}){
           </select>
         </div>
         <div><label style={lbl}>职位链接</label><input style={inp} value={form.url||""} onChange={e=>set("url",e.target.value)} placeholder="https://..."/></div>
-        <div style={{gridColumn:"1/-1"}}><label style={lbl}>备注</label><input style={inp} value={form.note} onChange={e=>set("note",e.target.value)} placeholder="可选"/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={lbl}>备注</label><textarea style={inpArea} value={form.note} onChange={e=>set("note",e.target.value)} placeholder="可选"/></div>
       </div>
       <div style={{marginTop:16}}>
         <label style={{...lbl,fontSize:13,color:C.moss}}>📅 流程时间轴</label>
@@ -293,18 +294,20 @@ function JobForm({initial,onSave,onCancel}){
   );
 }
 
-function KanbanCard({job,onEdit,onDel,isDragging,isRejected,onDragStart,onDragEnd}){
+function KanbanCard({job,onEdit,onDel,isDragging,isRejected,isDropTarget,onDragStart,onDragEnd,onCardDragOver,onDropBefore}){
   const [expanded,setExpanded]=useState(false);
   const ms=job.milestones||[];
   const latest=ms.length>0?ms[ms.length-1]:null;
   const stageColor={"Online Test":"#5C7A60","Assessment Centre":"#2F5A7A","Individual Interview":"#6A4F8A","Group Interview":"#7A6E2F","Power Day":"#7A3030","Video Interview":"#2F6B6B","Offer Call":"#2F6640"};
   return(
     <div draggable className="card" onDragStart={onDragStart} onDragEnd={onDragEnd}
+      onDragOver={e=>{e.preventDefault();e.stopPropagation();onCardDragOver&&onCardDragOver();}}
+      onDrop={e=>{e.preventDefault();e.stopPropagation();onDropBefore&&onDropBefore();}}
       style={{background:isRejected?"#f8f8f8":C.cream,border:`1px solid ${isRejected?"#ddd":C.border}`,borderRadius:10,padding:"10px 12px",cursor:"grab",
         opacity:isDragging?0.45:isRejected?0.6:1,
         filter:isRejected?"grayscale(40%)":"none",
         transform:isDragging?"scale(1.04) rotate(2deg)":"scale(1)",
-        boxShadow:isDragging?`0 8px 24px rgba(47,69,56,0.22)`:"0 1px 4px rgba(47,69,56,0.08)",
+        boxShadow:isDragging?`0 8px 24px rgba(47,69,56,0.22)`:isDropTarget?`inset 0 3px 0 ${C.sage}, 0 1px 4px rgba(47,69,56,0.08)`:"0 1px 4px rgba(47,69,56,0.08)",
         transition:"box-shadow 0.15s,opacity 0.15s,transform 0.15s"}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:6,marginBottom:4}}>
         <div style={{fontWeight:700,fontSize:13,color:C.fir,wordBreak:"break-word",lineHeight:1.4,flex:1}}>
@@ -333,7 +336,7 @@ function KanbanCard({job,onEdit,onDel,isDragging,isRejected,onDragStart,onDragEn
           </div>
         )}
         {ms.length>1&&<div style={{fontSize:11,color:C.textLight,marginBottom:6}}>+{ms.length-1} 个历史环节</div>}
-        {job.note&&<div style={{fontSize:11,color:C.textLight,fontStyle:"italic",wordBreak:"break-word",marginBottom:6}}>📝 {job.note}</div>}
+        {job.note&&<div style={{fontSize:11,color:C.textLight,fontStyle:"italic",wordBreak:"break-word",whiteSpace:"pre-wrap",marginBottom:6}}>📝 {job.note}</div>}
         <div style={{display:"flex",gap:6,marginTop:4}}>
           <button onClick={onEdit} style={{flex:1,padding:"3px 0",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>编辑</button>
           <button onClick={onDel}  style={{flex:1,padding:"3px 0",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>删除</button>
@@ -400,11 +403,12 @@ function ToApplyCard({item,urgent,expired,daysLeft,priorityColor,onPromote,onEdi
         <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginTop:4}}>
           {item.salary&&<div style={{fontSize:12,color:C.textLight,marginBottom:4}}>💰 {item.salary}</div>}
           {item.location&&<div style={{fontSize:12,color:C.textLight,marginBottom:4}}>📍 {item.location}</div>}
-          {item.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",marginBottom:4}}>📝 {item.note}</div>}
+          {item.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",whiteSpace:"pre-wrap",marginBottom:4}}>📝 {item.note}</div>}
         </div>
       </div>
       <div style={{display:"flex",gap:6,marginTop:8}}>
         <button onClick={onPromote} style={{flex:1,padding:"5px 0",borderRadius:7,border:"none",background:C.fir,color:C.white,fontSize:12,cursor:"pointer",fontWeight:600}}>✅ 标记已投</button>
+        <button onClick={()=>setExpanded(v=>!v)} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:12,cursor:"pointer"}}>{expanded?"收起":"查看"}</button>
         <button onClick={onEdit} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:12,cursor:"pointer"}}>编辑</button>
         <button onClick={onDel} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:12,cursor:"pointer"}}>删除</button>
       </div>
@@ -428,7 +432,7 @@ function CompanyCard({company,positions,onAddPosition,onEdit,onDel}){
         </div>
       </div>
       {company.industry&&<div style={{fontSize:12,color:C.textLight,marginBottom:6}}>{company.industry}</div>}
-      {company.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",marginBottom:6}}>📝 {company.note}</div>}
+      {company.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",whiteSpace:"pre-wrap",marginBottom:6}}>📝 {company.note}</div>}
       <div className={`collapsible ${expanded?"open":"closed"}`}>
         <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4,marginBottom:8}}>
           {positions.length===0&&<div style={{fontSize:12,color:C.mist,textAlign:"center",padding:"8px 0"}}>暂无关联的具体职位</div>}
@@ -464,7 +468,7 @@ function CompanyForm({initial,onSave,onCancel}){
           </select>
         </div>
         <div><label style={lbl}>公告/官网链接</label><input style={inp} value={form.url||""} onChange={e=>set("url",e.target.value)} placeholder="https://..."/></div>
-        <div style={{gridColumn:"1/-1"}}><label style={lbl}>备注</label><input style={inp} value={form.note||""} onChange={e=>set("note",e.target.value)} placeholder="可选，比如秋招启动时间、了解到的信息"/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={lbl}>备注</label><textarea style={inpArea} value={form.note||""} onChange={e=>set("note",e.target.value)} placeholder="可选，比如秋招启动时间、了解到的信息"/></div>
       </div>
       <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
         <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
@@ -598,7 +602,7 @@ function ToApplyForm({initial,companies,onSave,onCancel}){
           </select>
         </div>
         <div style={{gridColumn:"1/-1"}}><label style={lbl}>职位链接</label><input style={inp} value={form.url||""} onChange={e=>set("url",e.target.value)} placeholder="https://..."/></div>
-        <div style={{gridColumn:"1/-1"}}><label style={lbl}>备注</label><input style={inp} value={form.note||""} onChange={e=>set("note",e.target.value)} placeholder="可选"/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={lbl}>备注</label><textarea style={inpArea} value={form.note||""} onChange={e=>set("note",e.target.value)} placeholder="可选"/></div>
       </div>
       <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
         <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
@@ -622,6 +626,7 @@ function App(){
   const [typeFilter,setTypeFilter]=useState("all");
   const [taFilter,setTaFilter]=useState("all");
   const [dragId,setDragId]=useState(null);
+  const [dragOverCardId,setDragOverCardId]=useState(null);
   const dragOver=useRef(null);
   const dragIdRef=useRef(null);
   useEffect(()=>{dragIdRef.current=dragId;},[dragId]);
@@ -651,7 +656,20 @@ function App(){
     setModal(null);
   };
   const del=id=>{if(confirm("确认删除？"))setJobs(j=>j.filter(x=>x.id!==id));};
-  const upStatus=(id,s)=>setJobs(j=>j.map(x=>x.id===id?{...x,status:s}:x));
+  const reorderJobs=(draggedId,beforeId,newStatus)=>{
+    setJobs(prev=>{
+      const idx=prev.findIndex(j=>j.id===draggedId);
+      if(idx===-1) return prev;
+      const dragged={...prev[idx],status:newStatus};
+      const rest=prev.filter(j=>j.id!==draggedId);
+      if(beforeId==null) return [...rest,dragged];
+      const targetIdx=rest.findIndex(j=>j.id===beforeId);
+      if(targetIdx===-1) return [...rest,dragged];
+      const result=[...rest];
+      result.splice(targetIdx,0,dragged);
+      return result;
+    });
+  };
   const exportData=()=>{
     const payload={version:SCHEMA_VERSION,exportedAt:new Date().toISOString(),jobs};
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
@@ -839,7 +857,7 @@ function App(){
               return(
                 <div key={col.key}
                   onDragOver={e=>{e.preventDefault();dragOver.current=col.key;}}
-                  onDrop={()=>{if(dragId)upStatus(dragId,col.key);setDragId(null);dragOver.current=null;}}
+                  onDrop={e=>{e.preventDefault();if(dragId)reorderJobs(dragId,null,col.key);setDragId(null);setDragOverCardId(null);dragOver.current=null;}}
                   style={{minWidth:195,width:195,flexShrink:0,background:isOver?C.frost:C.white,border:`1.5px solid ${isOver?C.sage:C.border}`,borderRadius:14,overflow:"hidden",transition:"all 0.2s"}}>
                   <div style={{height:4,background:col.color,borderRadius:"14px 14px 0 0"}}/>
                   <div style={{padding:12}}>
@@ -847,13 +865,17 @@ function App(){
                     <span style={{fontWeight:700,fontSize:13,color:col.color}}>{col.label}</span>
                     <span style={{background:col.bg,color:col.color,borderRadius:12,padding:"1px 8px",fontSize:12,fontWeight:700}}>{colJobs.length}</span>
                   </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"65vh",overflowY:"auto",paddingRight:2}}>
                     {colJobs.map(job=>(
                       <KanbanCard key={job.id} job={job}
                         onEdit={()=>setModal(job)} onDel={()=>del(job.id)}
                         isDragging={dragId===job.id}
+                        isDropTarget={dragOverCardId===job.id&&dragId&&dragId!==job.id}
                         isRejected={job.status==="rejected"}
-                        onDragStart={()=>setDragId(job.id)} onDragEnd={()=>setDragId(null)}/>
+                        onDragStart={()=>setDragId(job.id)}
+                        onDragEnd={()=>{setDragId(null);setDragOverCardId(null);}}
+                        onCardDragOver={()=>{if(dragId&&dragId!==job.id)setDragOverCardId(job.id);}}
+                        onDropBefore={()=>{if(dragId&&dragId!==job.id)reorderJobs(dragId,job.id,col.key);setDragId(null);setDragOverCardId(null);dragOver.current=null;}}/>
                     ))}
                     {colJobs.length===0&&<div style={{textAlign:"center",color:C.mist,fontSize:12,padding:"18px 0",borderRadius:8,border:`1.5px dashed ${C.border}`}}>拖拽到此处</div>}
                   </div>

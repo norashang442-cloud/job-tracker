@@ -59,7 +59,7 @@ const STAGES=["Online Test","Assessment Centre","Individual Interview","Group In
 const INTENTS=["计划投递","长期关注"];
 const WATCH_REASONS=["能力/经验暂时不够，想先提升再投","岗位尚未开放申请，等秋招后续批次","优先级较低，先集中精力投更心仪的岗位","还想再深入了解这家公司/岗位，没决定好","硬性门槛不符合（学历、工作年限、身份限制等）","还没想清楚要不要走这个行业/方向","其他"];
 const SCHEMA_VERSION=1;
-const EMPTY={company:"",position:"",type:"全职",industry:"",url:"",date:new Date().toISOString().slice(0,10),source:"Boss直聘",status:"applied",note:"",milestones:[]};
+const EMPTY={company:"",position:"",type:"全职",industry:"",url:"",date:new Date().toISOString().slice(0,10),source:"Boss直聘",status:"applied",note:"",milestones:[],companyId:null};
 const EMPTY_TOAPPLY={company:"",position:"",type:"全职",url:"",deadline:"",rolling:false,salary:"",location:"",priority:"中",note:"",intent:"计划投递",watchReason:"",companyId:null};
 const EMPTY_COMPANY={company:"",industry:"",url:"",note:""};
 
@@ -79,6 +79,7 @@ function migrateJob(job){
     status:     job.status     ?? "applied",
     note:       job.note       ?? "",
     milestones: Array.isArray(job.milestones)?job.milestones:[],
+    companyId:  job.companyId  ?? null,
     id:         job.id         ?? Date.now(),
   };
 }
@@ -158,6 +159,18 @@ function downloadICS(filename,content){
   a.download=filename;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+function findDuplicateWarning(companyName,currentId,jobs,toApply){
+  const name=(companyName||"").trim().toLowerCase();
+  if(!name) return "";
+  const jobMatches=jobs.filter(j=>j.company.trim().toLowerCase()===name&&j.id!==currentId);
+  const taMatches=toApply.filter(t=>t.company.trim().toLowerCase()===name&&t.id!==currentId);
+  if(!jobMatches.length&&!taMatches.length) return "";
+  const parts=[];
+  if(jobMatches.length) parts.push(`${jobMatches.length}条已投递记录`);
+  if(taMatches.length) parts.push(`${taMatches.length}条待投递记录`);
+  return `⚠️ 已有${parts.join('、')}`;
 }
 
 function Badge({s}){
@@ -260,7 +273,7 @@ function MilestoneEditor({milestones,onChange,company,position}){
   );
 }
 
-function JobForm({initial,onSave,onCancel}){
+function JobForm({initial,companies,jobs,toApply,onSave,onCancel}){
   const [form,setForm]=useState(initial||EMPTY);
   const [rawText,setRawText]=useState("");
   const [parsing,setParsing]=useState(false);
@@ -309,8 +322,26 @@ function JobForm({initial,onSave,onCancel}){
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div><label style={lbl}>公司名称 *</label><input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/></div>
+        <div>
+          <label style={lbl}>公司名称 *</label>
+          <input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/>
+          {(()=>{const w=findDuplicateWarning(form.company,form.id,jobs,toApply);return w&&<div style={{fontSize:11,color:"#b07030",marginTop:4}}>{w}</div>;})()}
+        </div>
         <div><label style={lbl}>职位名称 *</label><input style={inp} value={form.position} onChange={e=>set("position",e.target.value)} placeholder="如：Graduate Engineer"/></div>
+        {companies&&companies.length>0&&(
+          <div style={{gridColumn:"1/-1"}}>
+            <label style={lbl}>关联公司（可选）</label>
+            <select style={inp} value={form.companyId??""} onChange={e=>{
+              const cid=e.target.value?Number(e.target.value):null;
+              set("companyId",cid);
+              const co=companies.find(c=>c.id===cid);
+              if(co) set("company",co.company);
+            }}>
+              <option value="">不关联</option>
+              {companies.map(c=><option key={c.id} value={c.id}>{c.company}</option>)}
+            </select>
+          </div>
+        )}
         <div><label style={lbl}>公司行业</label>
           <select style={inp} value={form.industry||""} onChange={e=>set("industry",e.target.value)}>
             <option value="">请选择</option>
@@ -496,7 +527,7 @@ function CompanyCard({company,positions,onAddPosition,onEdit,onDel}){
           {positions.map(p=>(
             <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.cream,borderRadius:8,padding:"6px 10px",marginBottom:6,gap:8}}>
               <span style={{fontSize:12,color:C.text,fontWeight:600,wordBreak:"break-word"}}>{p.position}</span>
-              <span style={{background:p.intent==="长期关注"?C.frost:C.sage,color:p.intent==="长期关注"?C.textLight:C.white,borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>{p.intent}</span>
+              <span style={{background:p.tagBg,color:p.tagColor,borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>{p.tagLabel}</span>
             </div>
           ))}
         </div>
@@ -536,7 +567,7 @@ function CompanyForm({initial,onSave,onCancel}){
   );
 }
 
-function ToApplyForm({initial,companies,onSave,onCancel}){
+function ToApplyForm({initial,companies,jobs,toApply,onSave,onCancel}){
   const [form,setForm]=useState(initial||EMPTY_TOAPPLY);
   const [rawText,setRawText]=useState("");
   const [parsing,setParsing]=useState(false);
@@ -593,7 +624,11 @@ function ToApplyForm({initial,companies,onSave,onCancel}){
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div><label style={lbl}>公司名称 *</label><input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/></div>
+        <div>
+          <label style={lbl}>公司名称 *</label>
+          <input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/>
+          {(()=>{const w=findDuplicateWarning(form.company,form.id,jobs||[],(toApply||[]));return w&&<div style={{fontSize:11,color:"#b07030",marginTop:4}}>{w}</div>;})()}
+        </div>
         <div><label style={lbl}>职位名称 *</label><input style={inp} value={form.position} onChange={e=>set("position",e.target.value)} placeholder="如：Graduate Engineer"/></div>
         <div><label style={lbl}>职位类型</label>
           <select style={inp} value={form.type||"全职"} onChange={e=>set("type",e.target.value)}>
@@ -684,6 +719,7 @@ function App(){
   const [taFilter,setTaFilter]=useState("all");
   const [dragId,setDragId]=useState(null);
   const [dragOverCardId,setDragOverCardId]=useState(null);
+  const [manualExpand,setManualExpand]=useState({});
   const dragOver=useRef(null);
   const dragIdRef=useRef(null);
   useEffect(()=>{dragIdRef.current=dragId;},[dragId]);
@@ -768,7 +804,7 @@ function App(){
   };
   const delTA=id=>{if(confirm("确认删除？"))setToApply(a=>a.filter(x=>x.id!==id));};
   const promoteTA=item=>{
-    setJobs(j=>[...j,{...EMPTY,company:item.company,position:item.position,type:item.type||"全职",url:item.url,note:item.note,id:Date.now()}]);
+    setJobs(j=>[...j,{...EMPTY,company:item.company,position:item.position,type:item.type||"全职",url:item.url,note:item.note,companyId:item.companyId??null,id:Date.now()}]);
     delTA(item.id);
     setMainTab("tracker");
   };
@@ -834,7 +870,16 @@ function App(){
             )}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
               {companies.map(co=>{
-                const positions=toApply.filter(t=>t.companyId===co.id);
+                const linkedJobs=jobs.filter(j=>j.companyId===co.id).map(j=>{
+                  const st=STATUS.find(s=>s.key===j.status)||STATUS[0];
+                  return {id:`job-${j.id}`,position:j.position,tagLabel:st.label,tagColor:st.color,tagBg:st.bg};
+                });
+                const linkedToApply=toApply.filter(t=>t.companyId===co.id).map(t=>({
+                  id:`ta-${t.id}`,position:t.position,tagLabel:t.intent,
+                  tagColor:t.intent==="长期关注"?C.textLight:C.white,
+                  tagBg:t.intent==="长期关注"?C.frost:C.sage,
+                }));
+                const positions=[...linkedJobs,...linkedToApply];
                 return(
                   <CompanyCard key={co.id} company={co} positions={positions}
                     onAddPosition={()=>setTaModal({...EMPTY_TOAPPLY,company:co.company,companyId:co.id})}
@@ -907,36 +952,46 @@ function App(){
         </div>
 
         {view==="看板"&&(
-          <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:8,alignItems:"flex-start"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {STATUS.map(col=>{
               const colJobs=jobs.filter(j=>j.status===col.key&&(typeFilter==="all"||j.type===typeFilter));
               const isOver=dragOver.current===col.key;
+              const hasAny=jobs.some(j=>j.status===col.key);
+              const isOpen=col.key in manualExpand?manualExpand[col.key]:hasAny;
+              const dropHere=e=>{e.preventDefault();if(dragId)reorderJobs(dragId,null,col.key);setDragId(null);setDragOverCardId(null);dragOver.current=null;};
               return(
                 <div key={col.key}
-                  onDragOver={e=>{e.preventDefault();dragOver.current=col.key;}}
-                  onDrop={e=>{e.preventDefault();if(dragId)reorderJobs(dragId,null,col.key);setDragId(null);setDragOverCardId(null);dragOver.current=null;}}
-                  style={{minWidth:195,width:195,flexShrink:0,background:isOver?C.frost:C.white,border:`1.5px solid ${isOver?C.sage:C.border}`,borderRadius:14,overflow:"hidden",transition:"all 0.2s"}}>
-                  <div style={{height:4,background:col.color,borderRadius:"14px 14px 0 0"}}/>
-                  <div style={{padding:12}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                    <span style={{fontWeight:700,fontSize:13,color:col.color}}>{col.label}</span>
-                    <span style={{background:col.bg,color:col.color,borderRadius:12,padding:"1px 8px",fontSize:12,fontWeight:700}}>{colJobs.length}</span>
+                  style={{background:C.white,border:`1.5px solid ${isOver?C.sage:C.border}`,borderRadius:14,overflow:"hidden",transition:"all 0.2s"}}>
+                  <div style={{height:4,background:col.color}}/>
+                  <div onClick={()=>setManualExpand(s=>({...s,[col.key]:!isOpen}))}
+                    onDragOver={e=>{e.preventDefault();dragOver.current=col.key;}}
+                    onDrop={dropHere}
+                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",cursor:"pointer",background:isOver?C.frost:C.white}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontWeight:700,fontSize:14,color:col.color}}>{col.label}</span>
+                      <span style={{background:col.bg,color:col.color,borderRadius:12,padding:"1px 9px",fontSize:12,fontWeight:700}}>{colJobs.length}</span>
+                    </div>
+                    <span style={{color:C.mist,fontSize:13}}>{isOpen?"▲":"▼"}</span>
                   </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:8,height:"65vh",overflowY:"auto",paddingRight:2}}>
-                    {colJobs.map(job=>(
-                      <KanbanCard key={job.id} job={job}
-                        onEdit={()=>setModal(job)} onDel={()=>del(job.id)}
-                        isDragging={dragId===job.id}
-                        isDropTarget={dragOverCardId===job.id&&dragId&&dragId!==job.id}
-                        isRejected={job.status==="rejected"}
-                        onDragStart={()=>setDragId(job.id)}
-                        onDragEnd={()=>{setDragId(null);setDragOverCardId(null);}}
-                        onCardDragOver={()=>{if(dragId&&dragId!==job.id)setDragOverCardId(job.id);}}
-                        onDropBefore={()=>{if(dragId&&dragId!==job.id)reorderJobs(dragId,job.id,col.key);setDragId(null);setDragOverCardId(null);dragOver.current=null;}}/>
-                    ))}
-                    {colJobs.length===0&&<div style={{textAlign:"center",color:C.mist,fontSize:12,padding:"18px 0",borderRadius:8,border:`1.5px dashed ${C.border}`}}>拖拽到此处</div>}
-                  </div>
-                  </div>
+                  {isOpen&&(
+                    <div className="tab-content"
+                      onDragOver={e=>{e.preventDefault();dragOver.current=col.key;}}
+                      onDrop={dropHere}
+                      style={{padding:"0 16px 16px",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10,maxHeight:"60vh",overflowY:"auto"}}>
+                      {colJobs.map(job=>(
+                        <KanbanCard key={job.id} job={job}
+                          onEdit={()=>setModal(job)} onDel={()=>del(job.id)}
+                          isDragging={dragId===job.id}
+                          isDropTarget={dragOverCardId===job.id&&dragId&&dragId!==job.id}
+                          isRejected={job.status==="rejected"}
+                          onDragStart={()=>setDragId(job.id)}
+                          onDragEnd={()=>{setDragId(null);setDragOverCardId(null);}}
+                          onCardDragOver={()=>{if(dragId&&dragId!==job.id)setDragOverCardId(job.id);}}
+                          onDropBefore={()=>{if(dragId&&dragId!==job.id)reorderJobs(dragId,job.id,col.key);setDragId(null);setDragOverCardId(null);dragOver.current=null;}}/>
+                      ))}
+                      {colJobs.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",color:C.mist,fontSize:12,padding:"18px 0",borderRadius:8,border:`1.5px dashed ${C.border}`}}>拖拽到此处</div>}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -989,10 +1044,10 @@ function App(){
       </div>
 
       <Modal open={!!modal} onClose={()=>setModal(null)}>
-        <JobForm initial={modal==="add"?null:modal} onSave={save} onCancel={()=>setModal(null)}/>
+        <JobForm initial={modal==="add"?null:modal} companies={companies} jobs={jobs} toApply={toApply} onSave={save} onCancel={()=>setModal(null)}/>
       </Modal>
       <Modal open={!!taModal} onClose={()=>setTaModal(false)}>
-        <ToApplyForm initial={taModal==="add"?null:taModal} companies={companies} onSave={saveTA} onCancel={()=>setTaModal(false)}/>
+        <ToApplyForm initial={taModal==="add"?null:taModal} companies={companies} jobs={jobs} toApply={toApply} onSave={saveTA} onCancel={()=>setTaModal(false)}/>
       </Modal>
       <Modal open={!!cModal} onClose={()=>setCModal(false)}>
         <CompanyForm initial={cModal==="add"?null:cModal} onSave={saveCo} onCancel={()=>setCModal(false)}/>

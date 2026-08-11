@@ -24,6 +24,19 @@
 
 配套的 `api/extract.js` 是一个无状态的 Vercel Serverless Function，把粘贴的职位页面文字（或 URL）转发给 DeepSeek API，自动提取公司、职位、行业、职位类型、来源渠道，用于表单里的"自动填写"功能。需要在部署环境配置 `DEEPSEEK_API_KEY` 环境变量。
 
+### `capture.html` · 手机端速记收件箱
+
+解决"手机上刷到小红书/公众号的秋招信息，没空仔细研究也不在电脑旁"的场景：`capture.html` 是一个极简的手机端网页（纯 HTML/JS，不加载 React，追求打开即用），粘贴文字或帖子链接、点一下就存进一个共享的云端收件箱；回到电脑后在 `index.html`"公司关注"页顶部点"📥 收件箱"，每条都能一键"转成关注公司"（会自动跑一遍 `api/extract.js` 的 AI 提取，尽量帮你把公司名、行业填好，不用从头手输）或者直接忽略。
+
+这是整个项目里**唯一需要真正云端存储**的部分（其余数据都只在本机 `localStorage`），因为收件箱要在手机和电脑两端共享。技术上依赖：
+
+- **Vercel KV**：在 Vercel 项目后台的 "Storage" 里创建一个 KV 数据库并关联到本项目，会自动注入 `KV_REST_API_URL` / `KV_REST_API_TOKEN` 这两个环境变量（`api/inbox-*.js` 三个函数都要用到）。
+- **`INBOX_SECRET`**：自己设一个环境变量作为收件箱的访问密钥，防止别人拿到 `capture.html` 的链接后往你的收件箱里乱塞数据。手机端首次打开 `capture.html`、电脑端首次点开收件箱面板时都会各自要求输入一次这个密钥，之后存在本地不用再输。
+
+三个接口：`api/inbox-add.js`（写入，`capture.html` 和 iOS Shortcut 都调用它）、`api/inbox-list.js`（电脑端拉取列表）、`api/inbox-delete.js`（转换或忽略后从收件箱移除）。
+
+**配合 iOS 快捷指令（Shortcuts）**：在支持"分享"的 App（比如小红书帖子）里，用 Shortcuts 的"从 URL 获取内容"动作直接 POST 到 `https://你的域名/api/inbox-add`，Header 加 `X-Inbox-Key: 你的密钥`，请求体 JSON 设成 `{"content": "分享输入", "source": "shortcut"}`，触发方式选"接收分享的项目"。这样在小红书里点分享→选这个 Shortcut，两步就存进收件箱，全程不用打开浏览器。评论等小红书本身就不支持分享的内容，走 `capture.html` 手动复制粘贴兜底。图文帖（比如秋招汇总表格截图）建议只存帖子链接，回电脑自己点进去筛选，不做图片文字提取。
+
 ## `phd.html` · 博士申请追踪
 
 用来记录套磁进度和网申项目进度，两者是多对多关系（一个导师可能关联多个网申项目，一个网申项目也可能关联多个联系过的导师），所以做成两个独立列表、互相关联，而不是像秋招那边那样做严格的层级结构：
@@ -35,9 +48,10 @@
 
 ## 技术实现
 
-- 两个都是纯静态单文件（`index.html` / `phd.html`）：React 18 + Babel Standalone，均通过 CDN 引入，无需构建步骤，直接用浏览器打开即可运行，共享同一套视觉样式（配色、卡片、弹窗动效）。
-- 两个页面顶部各有一个跳转链接互相导航，但不共享任何数据。
+- `index.html` / `phd.html` 是纯静态单文件：React 18 + Babel Standalone，均通过 CDN 引入，无需构建步骤，直接用浏览器打开即可运行，共享同一套视觉样式（配色、卡片、弹窗动效）。两个页面顶部各有一个跳转链接互相导航，但不共享任何数据。
+- `capture.html` 是纯 vanilla HTML/JS，不引入任何框架，专门为手机端弱网/快速打开优化。
+- 部署环境需要三个环境变量：`DEEPSEEK_API_KEY`（AI 提取）、`KV_REST_API_URL` + `KV_REST_API_TOKEN`（收件箱存储，随 Vercel KV 关联自动生成）、`INBOX_SECRET`（收件箱访问密钥，自己设定）。
 
 ## 使用
 
-直接用浏览器打开 `index.html`（秋招）或 `phd.html`（申博）即可使用，两边头部都有链接可以互相跳转。自动提取功能需要项目部署在支持 Serverless Function 的平台（如 Vercel）才能生效，本地直接打开文件时会自动降级为手动填写。数据的导入导出入口在 `index.html` 的"投递追踪"页顶部（`phd.html` 目前没有导入导出，数据全靠 localStorage 常驻）。
+直接用浏览器打开 `index.html`（秋招）或 `phd.html`（申博）即可使用，两边头部都有链接可以互相跳转。自动提取功能、收件箱功能都需要项目部署在支持 Serverless Function 的平台（如 Vercel）才能生效，本地直接打开文件时会自动降级为手动填写/提示收件箱加载失败。数据的导入导出入口在 `index.html` 的"投递追踪"页顶部（`phd.html` 目前没有导入导出，数据全靠 localStorage 常驻）。

@@ -719,6 +719,12 @@ function App(){
   const [dragId,setDragId]=useState(null);
   const [dragOverCardId,setDragOverCardId]=useState(null);
   const [manualExpand,setManualExpand]=useState({});
+  const [inboxItems,setInboxItems]=useState([]);
+  const [inboxOpen,setInboxOpen]=useState(false);
+  const [inboxLoading,setInboxLoading]=useState(false);
+  const [inboxError,setInboxError]=useState("");
+  const [convertingId,setConvertingId]=useState(null);
+  const [convertingInboxId,setConvertingInboxId]=useState(null);
   const dragOver=useRef(null);
   const dragIdRef=useRef(null);
   useEffect(()=>{dragIdRef.current=dragId;},[dragId]);
@@ -812,8 +818,71 @@ function App(){
     if(cModal==="add"||!cModal.id) setCompanies(c=>[...c,{...item,id:Date.now()}]);
     else setCompanies(c=>c.map(x=>x.id===cModal.id?{...cModal,...item}:x));
     setCModal(false);
+    if(convertingInboxId){ deleteInboxItem(convertingInboxId); setConvertingInboxId(null); }
   };
   const delCo=id=>{if(confirm("确认删除？关联到该公司的具体职位不会被删除"))setCompanies(c=>c.filter(x=>x.id!==id));};
+  const closeCModal=()=>{setCModal(false);setConvertingInboxId(null);};
+
+  const getInboxKey=()=>{
+    let key=localStorage.getItem("jt4_inbox_key")||"";
+    if(!key){
+      key=prompt("请输入收件箱密钥（部署时在 Vercel 环境变量 INBOX_SECRET 里设置的值）")||"";
+      if(key) localStorage.setItem("jt4_inbox_key",key);
+    }
+    return key;
+  };
+  const fetchInbox=async()=>{
+    const key=getInboxKey();
+    if(!key) return;
+    setInboxLoading(true); setInboxError("");
+    try{
+      const res=await fetch("/api/inbox-list",{headers:{"X-Inbox-Key":key}});
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.error||"failed");
+      setInboxItems(data.items||[]);
+    }catch{ setInboxError("⚠️ 加载失败，检查密钥或网络"); }
+    setInboxLoading(false);
+  };
+  const toggleInbox=()=>{
+    const next=!inboxOpen;
+    setInboxOpen(next);
+    if(next) fetchInbox();
+  };
+  const deleteInboxItem=async id=>{
+    const key=getInboxKey();
+    if(key){
+      try{
+        await fetch("/api/inbox-delete",{
+          method:"POST",
+          headers:{"Content-Type":"application/json","X-Inbox-Key":key},
+          body:JSON.stringify({id}),
+        });
+      }catch{}
+    }
+    setInboxItems(items=>items.filter(i=>i.id!==id));
+  };
+  const ignoreInboxItem=item=>{ if(confirm("确认忽略这条？")) deleteInboxItem(item.id); };
+  const convertInboxItem=async item=>{
+    setConvertingId(item.id);
+    let extracted={};
+    try{
+      const res=await fetch("/api/extract",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(item.type==="url"?{url:item.content}:{text:item.content}),
+      });
+      extracted=await res.json();
+    }catch{}
+    setConvertingInboxId(item.id);
+    setCModal({
+      ...EMPTY_COMPANY,
+      company:extracted.company||"",
+      industry:INDUSTRIES.includes(extracted.industry)?extracted.industry:"",
+      url:item.type==="url"?item.content:"",
+      note:item.content,
+    });
+    setConvertingId(null);
+  };
 
   const mainTabBtn=active=>({padding:"8px 20px",borderRadius:20,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,background:active?C.white:C.fir,color:active?C.fir:C.mist,transition:"all 0.2s",boxShadow:active?"0 2px 8px rgba(47,69,56,0.15)":"none"});
 
@@ -860,6 +929,35 @@ function App(){
 
         {mainTab==="companies"&&(
           <div className="tab-content">
+            <div style={{marginBottom:16}}>
+              <button onClick={toggleInbox} style={{padding:"8px 16px",borderRadius:20,border:`1px solid ${C.border}`,background:C.white,color:C.moss,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""} {inboxOpen?"▲":"▼"}
+              </button>
+              {inboxOpen&&(
+                <div style={{marginTop:8,background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:12,maxWidth:520}}>
+                  {inboxLoading&&<div style={{fontSize:12,color:C.textLight,textAlign:"center",padding:"12px 0"}}>加载中…</div>}
+                  {!inboxLoading&&inboxError&&<div style={{fontSize:12,color:"#b05050",textAlign:"center",padding:"12px 0"}}>{inboxError}</div>}
+                  {!inboxLoading&&!inboxError&&inboxItems.length===0&&<div style={{fontSize:12,color:C.mist,textAlign:"center",padding:"12px 0"}}>收件箱是空的</div>}
+                  {!inboxLoading&&!inboxError&&inboxItems.map(item=>(
+                    <div key={item.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
+                      <div style={{fontSize:12,color:C.text,wordBreak:"break-word",whiteSpace:"pre-wrap",marginBottom:6}}>
+                        {item.type==="url"
+                          ?<a href={item.content} target="_blank" rel="noopener noreferrer" style={{color:C.fir}}>{item.content}</a>
+                          :item.content}
+                      </div>
+                      <div style={{fontSize:10,color:C.mist,marginBottom:6}}>{new Date(item.createdAt).toLocaleString()}{item.source?` · ${item.source}`:""}</div>
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={()=>convertInboxItem(item)} disabled={convertingId===item.id}
+                          style={{flex:1,padding:"5px 0",borderRadius:6,border:"none",background:convertingId===item.id?C.mist:C.sage,color:C.white,fontSize:11,cursor:convertingId===item.id?"not-allowed":"pointer"}}>
+                          {convertingId===item.id?"提取中…":"转成关注公司"}
+                        </button>
+                        <button onClick={()=>ignoreInboxItem(item)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>忽略</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             {companies.length===0&&(
               <div style={{textAlign:"center",padding:"60px 20px",color:C.mist}}>
                 <div style={{fontSize:36,marginBottom:12}}>🏢</div>
@@ -1050,8 +1148,8 @@ function App(){
       <Modal open={!!taModal} onClose={()=>setTaModal(false)}>
         <ToApplyForm initial={taModal==="add"?null:taModal} companies={companies} jobs={jobs} toApply={toApply} onSave={saveTA} onCancel={()=>setTaModal(false)}/>
       </Modal>
-      <Modal open={!!cModal} onClose={()=>setCModal(false)}>
-        <CompanyForm initial={cModal==="add"?null:cModal} onSave={saveCo} onCancel={()=>setCModal(false)}/>
+      <Modal open={!!cModal} onClose={closeCModal}>
+        <CompanyForm initial={cModal==="add"?null:cModal} onSave={saveCo} onCancel={closeCModal}/>
       </Modal>
     </div>
   );

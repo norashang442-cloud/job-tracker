@@ -837,16 +837,22 @@ function App(){
     setInboxLoading(true); setInboxError("");
     try{
       const res=await fetch("/api/inbox-list",{headers:{"X-Inbox-Key":key}});
+      if(res.status===401){ setInboxError("⚠️ 密钥错误，点右边「重设密钥」重新输入"); setInboxLoading(false); return; }
       const data=await res.json();
       if(!res.ok) throw new Error(data.error||"failed");
       setInboxItems(data.items||[]);
-    }catch{ setInboxError("⚠️ 加载失败，检查密钥或网络"); }
+    }catch{ setInboxError("⚠️ 加载失败，检查网络"); }
     setInboxLoading(false);
   };
   const toggleInbox=()=>{
     const next=!inboxOpen;
     setInboxOpen(next);
     if(next) fetchInbox();
+  };
+  const resetInboxKey=()=>{
+    localStorage.removeItem("jt4_inbox_key");
+    setInboxError("");
+    fetchInbox();
   };
   const deleteInboxItem=async id=>{
     const key=getInboxKey();
@@ -929,10 +935,11 @@ function App(){
 
         {mainTab==="companies"&&(
           <div className="tab-content">
-            <div style={{marginBottom:16}}>
+            <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
               <button onClick={toggleInbox} style={{padding:"8px 16px",borderRadius:20,border:`1px solid ${C.border}`,background:C.white,color:C.moss,fontSize:13,fontWeight:600,cursor:"pointer"}}>
                 📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""} {inboxOpen?"▲":"▼"}
               </button>
+              {inboxOpen&&<button onClick={resetInboxKey} style={{background:"none",border:"none",color:C.textLight,fontSize:11,cursor:"pointer",textDecoration:"underline"}}>🔑 重设密钥</button>}
               {inboxOpen&&(
                 <div style={{marginTop:8,background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:12,maxWidth:520}}>
                   {inboxLoading&&<div style={{fontSize:12,color:C.textLight,textAlign:"center",padding:"12px 0"}}>加载中…</div>}

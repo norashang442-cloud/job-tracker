@@ -32,7 +32,7 @@ button:disabled{background:#A8C5A0;}
 <textarea id="content" placeholder="从小红书/公众号复制的内容，或者直接写公司名…" autofocus></textarea>
 <button id="submitBtn">存进收件箱</button>
 <div class="msg" id="msg"></div>
-<details class="keybox">
+<details class="keybox" id="keybox">
   <summary>设置密钥</summary>
   <input id="keyInput" type="text" placeholder="首次使用需要输入密钥" autocomplete="off"/>
   <button id="saveKeyBtn">保存密钥</button>
@@ -70,13 +70,17 @@ submitBtn.onclick = async () => {
       headers: { "Content-Type": "application/json", "X-Inbox-Key": key },
       body: JSON.stringify({ content, source: "capture-page" }),
     });
+    if (res.status === 401) {
+      document.getElementById("keybox").open = true;
+      throw new Error("密钥错误");
+    }
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "failed");
     contentEl.value = "";
     msgEl.textContent = "✅ 已存入收件箱";
     msgEl.className = "msg ok";
   } catch (err) {
-    msgEl.textContent = "⚠️ 保存失败，检查密钥或网络";
+    msgEl.textContent = err.message === "密钥错误" ? "⚠️ 密钥错误，请在下方重新填写" : "⚠️ 保存失败，检查网络";
     msgEl.className = "msg err";
   }
   submitBtn.disabled = false;

@@ -725,6 +725,7 @@ function App(){
   const [inboxError,setInboxError]=useState("");
   const [convertingId,setConvertingId]=useState(null);
   const [convertingInboxId,setConvertingInboxId]=useState(null);
+  const [inboxExtractions,setInboxExtractions]=useState({});
   const dragOver=useRef(null);
   const dragIdRef=useRef(null);
   useEffect(()=>{dragIdRef.current=dragId;},[dragId]);
@@ -831,6 +832,20 @@ function App(){
     }
     return key;
   };
+  const extractForItem=async item=>{
+    setInboxExtractions(prev=>({...prev,[item.id]:{loading:true}}));
+    try{
+      const res=await fetch("/api/extract",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(item.type==="url"?{url:item.content}:{text:item.content}),
+      });
+      const json=await res.json();
+      setInboxExtractions(prev=>({...prev,[item.id]:{...json,loading:false}}));
+    }catch{
+      setInboxExtractions(prev=>({...prev,[item.id]:{loading:false,error:true}}));
+    }
+  };
   const fetchInbox=async()=>{
     const key=getInboxKey();
     if(!key) return;
@@ -840,7 +855,9 @@ function App(){
       if(res.status===401){ setInboxError("⚠️ 密钥错误，点右边「重设密钥」重新输入"); setInboxLoading(false); return; }
       const data=await res.json();
       if(!res.ok) throw new Error(data.error||"failed");
-      setInboxItems(data.items||[]);
+      const items=data.items||[];
+      setInboxItems(items);
+      items.forEach(item=>{ if(!inboxExtractions[item.id]) extractForItem(item); });
     }catch{ setInboxError("⚠️ 加载失败，检查网络"); }
     setInboxLoading(false);
   };
@@ -866,25 +883,31 @@ function App(){
       }catch{}
     }
     setInboxItems(items=>items.filter(i=>i.id!==id));
+    setInboxExtractions(prev=>{const next={...prev};delete next[id];return next;});
   };
   const ignoreInboxItem=item=>{ if(confirm("确认忽略这条？")) deleteInboxItem(item.id); };
   const convertInboxItem=async item=>{
     setConvertingId(item.id);
-    let extracted={};
-    try{
-      const res=await fetch("/api/extract",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(item.type==="url"?{url:item.content}:{text:item.content}),
-      });
-      extracted=await res.json();
-    }catch{}
+    let extracted=inboxExtractions[item.id];
+    if(!extracted||extracted.loading||extracted.error){
+      try{
+        const res=await fetch("/api/extract",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify(item.type==="url"?{url:item.content}:{text:item.content}),
+        });
+        extracted=await res.json();
+      }catch{ extracted={}; }
+    }
     setConvertingInboxId(item.id);
+    const officialUrl=/^https?:\/\//i.test(extracted.officialUrl||"")?extracted.officialUrl:"";
+    setInboxOpen(false);
+    setMainTab("companies");
     setCModal({
       ...EMPTY_COMPANY,
       company:extracted.company||"",
       industry:INDUSTRIES.includes(extracted.industry)?extracted.industry:"",
-      url:item.type==="url"?item.content:"",
+      url:officialUrl||(item.type==="url"?item.content:""),
       note:item.content,
     });
     setConvertingId(null);
@@ -902,17 +925,22 @@ function App(){
           </div>
           <a href="phd.html" style={{color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"}}
             onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>🎓 申博追踪</a>
+          <button onClick={toggleInbox} style={{background:"transparent",color:C.mist,border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
+            📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""}
+          </button>
         </div>
         <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4}}>
           <button style={mainTabBtn(mainTab==="companies")} onClick={()=>setMainTab("companies")}>
             🏢 公司关注
             {companies.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{companies.length}</span>}
           </button>
-          <button style={mainTabBtn(mainTab==="tracker")} onClick={()=>setMainTab("tracker")}>📋 投递追踪</button>
+          <span style={{color:C.mist,fontSize:14,alignSelf:"center",padding:"0 2px"}}>›</span>
           <button style={mainTabBtn(mainTab==="toApply")} onClick={()=>setMainTab("toApply")}>
-            📌 待投递
+            📌 待投岗位
             {toApply.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{toApply.length}</span>}
           </button>
+          <span style={{color:C.mist,fontSize:14,alignSelf:"center",padding:"0 2px"}}>›</span>
+          <button style={mainTabBtn(mainTab==="tracker")} onClick={()=>setMainTab("tracker")}>📋 投递追踪</button>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           {mainTab==="tracker"&&<>
@@ -935,36 +963,6 @@ function App(){
 
         {mainTab==="companies"&&(
           <div className="tab-content">
-            <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
-              <button onClick={toggleInbox} style={{padding:"8px 16px",borderRadius:20,border:`1px solid ${C.border}`,background:C.white,color:C.moss,fontSize:13,fontWeight:600,cursor:"pointer"}}>
-                📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""} {inboxOpen?"▲":"▼"}
-              </button>
-              {inboxOpen&&<button onClick={resetInboxKey} style={{background:"none",border:"none",color:C.textLight,fontSize:11,cursor:"pointer",textDecoration:"underline"}}>🔑 重设密钥</button>}
-              {inboxOpen&&(
-                <div style={{marginTop:8,background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:12,maxWidth:520}}>
-                  {inboxLoading&&<div style={{fontSize:12,color:C.textLight,textAlign:"center",padding:"12px 0"}}>加载中…</div>}
-                  {!inboxLoading&&inboxError&&<div style={{fontSize:12,color:"#b05050",textAlign:"center",padding:"12px 0"}}>{inboxError}</div>}
-                  {!inboxLoading&&!inboxError&&inboxItems.length===0&&<div style={{fontSize:12,color:C.mist,textAlign:"center",padding:"12px 0"}}>收件箱是空的</div>}
-                  {!inboxLoading&&!inboxError&&inboxItems.map(item=>(
-                    <div key={item.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
-                      <div style={{fontSize:12,color:C.text,wordBreak:"break-word",whiteSpace:"pre-wrap",marginBottom:6}}>
-                        {item.type==="url"
-                          ?<a href={item.content} target="_blank" rel="noopener noreferrer" style={{color:C.fir}}>{item.content}</a>
-                          :item.content}
-                      </div>
-                      <div style={{fontSize:10,color:C.mist,marginBottom:6}}>{new Date(item.createdAt).toLocaleString()}{item.source?` · ${item.source}`:""}</div>
-                      <div style={{display:"flex",gap:6}}>
-                        <button onClick={()=>convertInboxItem(item)} disabled={convertingId===item.id}
-                          style={{flex:1,padding:"5px 0",borderRadius:6,border:"none",background:convertingId===item.id?C.mist:C.sage,color:C.white,fontSize:11,cursor:convertingId===item.id?"not-allowed":"pointer"}}>
-                          {convertingId===item.id?"提取中…":"转成关注公司"}
-                        </button>
-                        <button onClick={()=>ignoreInboxItem(item)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>忽略</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
             {companies.length===0&&(
               <div style={{textAlign:"center",padding:"60px 20px",color:C.mist}}>
                 <div style={{fontSize:36,marginBottom:12}}>🏢</div>
@@ -1157,6 +1155,38 @@ function App(){
       </Modal>
       <Modal open={!!cModal} onClose={closeCModal}>
         <CompanyForm initial={cModal==="add"?null:cModal} onSave={saveCo} onCancel={closeCModal}/>
+      </Modal>
+      <Modal open={inboxOpen} onClose={()=>setInboxOpen(false)}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h3 style={{color:C.fir,fontSize:17}}>📥 收件箱</h3>
+          <button onClick={resetInboxKey} style={{background:"none",border:"none",color:C.textLight,fontSize:11,cursor:"pointer",textDecoration:"underline"}}>🔑 重设密钥</button>
+        </div>
+        {inboxLoading&&<div style={{fontSize:12,color:C.textLight,textAlign:"center",padding:"12px 0"}}>加载中…</div>}
+        {!inboxLoading&&inboxError&&<div style={{fontSize:12,color:"#b05050",textAlign:"center",padding:"12px 0"}}>{inboxError}</div>}
+        {!inboxLoading&&!inboxError&&inboxItems.length===0&&<div style={{fontSize:12,color:C.mist,textAlign:"center",padding:"12px 0"}}>收件箱是空的</div>}
+        {!inboxLoading&&!inboxError&&inboxItems.map(item=>{
+          const ext=inboxExtractions[item.id];
+          return(
+          <div key={item.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
+            <div style={{fontSize:12,color:C.text,wordBreak:"break-word",whiteSpace:"pre-wrap",marginBottom:6}}>
+              {item.type==="url"
+                ?<a href={item.content} target="_blank" rel="noopener noreferrer" style={{color:C.fir}}>{item.content}</a>
+                :item.content}
+            </div>
+            {ext&&ext.loading&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>🔍 识别中…</div>}
+            {ext&&!ext.loading&&!ext.error&&ext.company&&<div style={{fontSize:11,color:C.sage,fontWeight:600,marginBottom:6}}>推测：{ext.company}{ext.industry?` · ${ext.industry}`:""}</div>}
+            {ext&&!ext.loading&&!ext.error&&!ext.company&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>未识别出公司信息</div>}
+            <div style={{fontSize:10,color:C.mist,marginBottom:6}}>{new Date(item.createdAt).toLocaleString()}{item.source?` · ${item.source}`:""}</div>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>convertInboxItem(item)} disabled={convertingId===item.id}
+                style={{flex:1,padding:"5px 0",borderRadius:6,border:"none",background:convertingId===item.id?C.mist:C.sage,color:C.white,fontSize:11,cursor:convertingId===item.id?"not-allowed":"pointer"}}>
+                {convertingId===item.id?"提取中…":"转成关注公司"}
+              </button>
+              <button onClick={()=>ignoreInboxItem(item)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>忽略</button>
+            </div>
+          </div>
+          );
+        })}
       </Modal>
     </div>
   );

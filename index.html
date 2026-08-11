@@ -62,6 +62,7 @@ const SCHEMA_VERSION=1;
 const EMPTY={company:"",position:"",type:"全职",industry:"",url:"",date:new Date().toISOString().slice(0,10),source:"Boss直聘",status:"applied",note:"",milestones:[],companyId:null};
 const EMPTY_TOAPPLY={company:"",position:"",type:"全职",url:"",deadline:"",rolling:false,salary:"",location:"",priority:"中",note:"",intent:"计划投递",watchReason:"",companyId:null};
 const EMPTY_COMPANY={company:"",industry:"",url:"",note:""};
+const PRIORITY_ORDER={"高":0,"中":1,"低":2};
 
 const inp={width:"100%",padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:14,color:C.text,background:C.cream};
 const inpArea={...inp,minHeight:64,resize:"vertical",fontFamily:"inherit",lineHeight:1.5};
@@ -122,31 +123,29 @@ function buildMilestoneICS({company,position,stage,date,time,note}){
   const now=new Date();
   const dtstamp=`${now.getUTCFullYear()}${pad(now.getUTCMonth()+1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
   const uid=`${Date.now()}-${Math.random().toString(36).slice(2)}@job-tracker`;
-  const summary=icsEscape(`${company} · ${stage}`);
-  const description=icsEscape([position,note].filter(Boolean).join(" - "));
+  const summary=icsEscape([company,position,stage].filter(Boolean).join("-"));
+  const description=icsEscape(note||"");
   const [y,m,d]=date.split("-");
-  let body;
+  let dtLines,alarmTrigger;
   if(time){
     const [hh,mm]=time.split(":");
-    body=[
-      `DTSTART:${y}${m}${d}T${hh}${mm}00`,
-      "BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:提醒","TRIGGER:-PT2H","END:VALARM",
-    ];
+    dtLines=[`DTSTART:${y}${m}${d}T${hh}${mm}00`];
+    alarmTrigger="-PT2H";
   }else{
     const start=new Date(Number(y),Number(m)-1,Number(d));
     const end=new Date(start); end.setDate(end.getDate()+1);
     const endStr=`${end.getFullYear()}${pad(end.getMonth()+1)}${pad(end.getDate())}`;
-    body=[
-      `DTSTART;VALUE=DATE:${y}${m}${d}`,
-      `DTEND;VALUE=DATE:${endStr}`,
-      "BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:提醒","TRIGGER:-P1D","END:VALARM",
-    ];
+    dtLines=[`DTSTART;VALUE=DATE:${y}${m}${d}`,`DTEND;VALUE=DATE:${endStr}`];
+    alarmTrigger="-P1D";
   }
+  // RFC5545 requires VEVENT properties before any VALARM sub-component,
+  // otherwise strict parsers (Apple Calendar included) silently drop SUMMARY.
   const lines=[
     "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//job-tracker//milestone//CN",
-    "BEGIN:VEVENT",`UID:${uid}`,`DTSTAMP:${dtstamp}`,...body,
+    "BEGIN:VEVENT",`UID:${uid}`,`DTSTAMP:${dtstamp}`,...dtLines,
     `SUMMARY:${summary}`,
     description?`DESCRIPTION:${description}`:null,
+    "BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:提醒",`TRIGGER:${alarmTrigger}`,"END:VALARM",
     "END:VEVENT","END:VCALENDAR",
   ].filter(Boolean);
   return lines.join("\r\n");
@@ -222,7 +221,7 @@ function MilestoneEditor({milestones,onChange,company,position}){
     setNote("");setTime("");
   };
   const remove=id=>onChange(milestones.filter(m=>m.id!==id));
-  const addToCalendar=m=>downloadICS(`${company}-${m.stage}.ics`,buildMilestoneICS({company,position,stage:m.stage,date:m.date,time:m.time,note:m.note}));
+  const addToCalendar=m=>downloadICS(`${company}-${position}-${m.stage}.ics`,buildMilestoneICS({company,position,stage:m.stage,date:m.date,time:m.time,note:m.note}));
   const stageColor={"Online Test":"#5C7A60","Assessment Centre":"#2F5A7A","Individual Interview":"#6A4F8A","Group Interview":"#7A6E2F","Power Day":"#7A3030","Video Interview":"#2F6B6B","Phone Screen":"#4A6350","HR Round":"#5A4A2F","Technical Interview":"#2F4A7A","Offer Call":"#2F6640","其他":"#888"};
   return(
     <div style={{marginTop:4}}>
@@ -408,8 +407,8 @@ function KanbanCard({job,onEdit,onDel,isDragging,isRejected,isDropTarget,onDragS
           </button>
         </div>
       </div>
+      <div style={{fontSize:12,color:C.text,wordBreak:"break-word",lineHeight:1.4,marginBottom:6}}>{job.position}</div>
       <div className={`collapsible ${expanded?"open":"closed"}`}>
-        <div style={{fontSize:12,color:C.text,wordBreak:"break-word",lineHeight:1.4,marginBottom:6,paddingTop:2,fontWeight:500}}>{job.position}</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:latest?8:6}}>
           <TypeTag t={job.type}/>
           <span style={{background:C.frost,color:C.moss,padding:"1px 7px",borderRadius:8,fontSize:11}}>{job.source}</span>
@@ -911,6 +910,8 @@ function App(){
             )}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
               {[...toApply].filter(t=>taFilter==="all"||t.intent===taFilter).sort((a,b)=>{
+                const pa=PRIORITY_ORDER[a.priority]??1,pb=PRIORITY_ORDER[b.priority]??1;
+                if(pa!==pb) return pa-pb;
                 if(!a.deadline&&!b.deadline) return 0;
                 if(!a.deadline) return 1;
                 if(!b.deadline) return -1;

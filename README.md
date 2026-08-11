@@ -57,3 +57,15 @@
 ## 使用
 
 直接用浏览器打开 `index.html`（秋招）或 `phd.html`（申博）即可使用，两边头部都有链接可以互相跳转。自动提取功能、收件箱功能都需要项目部署在支持 Serverless Function 的平台（如 Vercel）才能生效，本地直接打开文件时会自动降级为手动填写/提示收件箱加载失败。数据的导入导出入口在 `index.html` 的"投递追踪"页顶部（`phd.html` 目前没有导入导出，数据全靠 localStorage 常驻）。
+
+## 自己部署一份
+
+代码里没有写死任何跟原作者账号绑定的东西，谁 fork 这个仓库都能部署出一套完全独立的实例，互不影响、不会用到别人的 API 额度或收件箱数据：
+
+1. Fork 这个仓库到自己的 GitHub 账号。
+2. 去 Vercel 导入这个仓库直接部署——零配置也能跑，只是 AI 提取和收件箱这两个功能会失效（其余全靠 localStorage 的功能完全不受影响）。
+3. 想要完整功能，在自己 Vercel 项目的 Environment Variables 里配：
+   - `DEEPSEEK_API_KEY`——自己去 DeepSeek 开发者平台申请
+   - `KV_REST_API_URL` / `KV_REST_API_TOKEN`——在 Vercel 项目的 Storage 里关联一个 **Upstash for Redis** 数据库，这两个会自动生成，不用手填
+   - `INBOX_SECRET`——自己定一串字符串，作为 `capture.html` 和收件箱面板的访问密钥
+4. 改完环境变量后如果没有自动触发重新部署，去 Deployments 页手动 Redeploy 一下。

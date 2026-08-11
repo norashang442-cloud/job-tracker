@@ -1176,7 +1176,7 @@ function App(){
             {ext&&ext.loading&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>🔍 识别中…</div>}
             {ext&&!ext.loading&&!ext.error&&ext.company&&<div style={{fontSize:11,color:C.sage,fontWeight:600,marginBottom:6}}>推测：{ext.company}{ext.industry?` · ${ext.industry}`:""}</div>}
             {ext&&!ext.loading&&!ext.error&&!ext.company&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>未识别出公司信息</div>}
-            <div style={{fontSize:10,color:C.mist,marginBottom:6}}>{new Date(item.createdAt).toLocaleString()}{item.source?` · ${item.source}`:""}</div>
+            <div style={{fontSize:10,color:C.mist,marginBottom:6}}>{new Date(item.createdAt).toLocaleString()}</div>
             <div style={{display:"flex",gap:6}}>
               <button onClick={()=>convertInboxItem(item)} disabled={convertingId===item.id}
                 style={{flex:1,padding:"5px 0",borderRadius:6,border:"none",background:convertingId===item.id?C.mist:C.sage,color:C.white,fontSize:11,cursor:convertingId===item.id?"not-allowed":"pointer"}}>

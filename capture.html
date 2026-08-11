@@ -68,7 +68,7 @@ submitBtn.onclick = async () => {
     const res = await fetch("/api/inbox-add", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Inbox-Key": key },
-      body: JSON.stringify({ content, source: "capture-page" }),
+      body: JSON.stringify({ content }),
     });
     if (res.status === 401) {
       document.getElementById("keybox").open = true;

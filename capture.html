@@ -4,9 +4,9 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-title" content="秋招速记"/>
+<meta name="apple-mobile-web-app-title" content="求职速记"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-<title>秋招速记</title>
+<title>求职速记</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'PingFang SC',sans-serif;background:#F2F7F1;color:#1C2E22;min-height:100vh;padding:24px 20px;}
@@ -24,11 +24,18 @@ button:disabled{background:#A8C5A0;}
 .keybox summary{color:#4A6350;cursor:pointer;}
 .keybox input{width:100%;padding:10px;border-radius:8px;border:1px solid #C2D9BE;margin-top:10px;font-size:14px;font-family:inherit;}
 .keybox button{background:#5C7A60;margin-top:8px;padding:10px;font-size:13px;}
+.target{display:flex;gap:8px;margin-bottom:16px;}
+.target button{flex:1;width:auto;margin-top:0;padding:10px;font-size:14px;background:#fff;color:#4A6350;border:1.5px solid #C2D9BE;}
+.target button.active{background:#2F4538;color:#fff;border-color:#2F4538;}
 </style>
 </head>
 <body>
-<h1>📥 秋招速记</h1>
-<div class="sub">粘贴文字或帖子链接，存进求职追踪器的收件箱，回电脑再整理</div>
+<h1>📥 求职速记</h1>
+<div class="sub">粘贴文字或帖子链接，存进对应的收件箱，回电脑再整理</div>
+<div class="target">
+  <button type="button" id="targetJob" class="active">📋 秋招</button>
+  <button type="button" id="targetPhd">🎓 申博</button>
+</div>
 <textarea id="content" placeholder="从小红书/公众号复制的内容，或者直接写公司名…" autofocus></textarea>
 <button id="submitBtn">存进收件箱</button>
 <div class="msg" id="msg"></div>
@@ -39,11 +46,23 @@ button:disabled{background:#A8C5A0;}
 </details>
 <script>
 const KEY_STORAGE = "jt_inbox_key";
+const TARGET_STORAGE = "jt_inbox_target";
 const contentEl = document.getElementById("content");
 const submitBtn = document.getElementById("submitBtn");
 const msgEl = document.getElementById("msg");
 const keyInput = document.getElementById("keyInput");
 const saveKeyBtn = document.getElementById("saveKeyBtn");
+const targetJobBtn = document.getElementById("targetJob");
+const targetPhdBtn = document.getElementById("targetPhd");
+
+let target = localStorage.getItem(TARGET_STORAGE) === "phd" ? "phd" : "job";
+const renderTarget = () => {
+  targetJobBtn.classList.toggle("active", target === "job");
+  targetPhdBtn.classList.toggle("active", target === "phd");
+};
+renderTarget();
+targetJobBtn.onclick = () => { target = "job"; localStorage.setItem(TARGET_STORAGE, target); renderTarget(); };
+targetPhdBtn.onclick = () => { target = "phd"; localStorage.setItem(TARGET_STORAGE, target); renderTarget(); };
 
 keyInput.value = localStorage.getItem(KEY_STORAGE) || "";
 saveKeyBtn.onclick = () => {
@@ -68,7 +87,7 @@ submitBtn.onclick = async () => {
     const res = await fetch("/api/inbox-add", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Inbox-Key": key },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, target }),
     });
     if (res.status === 401) {
       document.getElementById("keybox").open = true;

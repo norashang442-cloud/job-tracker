@@ -378,6 +378,13 @@ function App(){
   const [aModal,setAModal]=useState(null);
   const [pFilter,setPFilter]=useState("all");
   const [aFilter,setAFilter]=useState("all");
+  const [inboxItems,setInboxItems]=useState([]);
+  const [inboxOpen,setInboxOpen]=useState(false);
+  const [inboxLoading,setInboxLoading]=useState(false);
+  const [inboxError,setInboxError]=useState("");
+  const [convertingId,setConvertingId]=useState(null);
+  const [convertingInboxId,setConvertingInboxId]=useState(null);
+  const [inboxExtractions,setInboxExtractions]=useState({});
 
   useEffect(()=>{try{localStorage.setItem("phd_professors",JSON.stringify(professors))}catch{}},[professors]);
   useEffect(()=>{try{localStorage.setItem("phd_applications",JSON.stringify(applications))}catch{}},[applications]);
@@ -390,11 +397,103 @@ function App(){
   const delProf=id=>{if(confirm("确认删除？"))setProfessors(p=>p.filter(x=>x.id!==id));};
 
   const saveApp=item=>{
-    if(aModal==="add") setApplications(a=>[...a,{...item,id:Date.now()}]);
+    if(aModal==="add"||!aModal.id) setApplications(a=>[...a,{...item,id:Date.now()}]);
     else setApplications(a=>a.map(x=>x.id===aModal.id?{...aModal,...item}:x));
     setAModal(null);
+    if(convertingInboxId){ deleteInboxItem(convertingInboxId); setConvertingInboxId(null); }
   };
   const delApp=id=>{if(confirm("确认删除？"))setApplications(a=>a.filter(x=>x.id!==id));};
+  const closeAModal=()=>{setAModal(null);setConvertingInboxId(null);};
+
+  const getInboxKey=()=>{
+    let key=localStorage.getItem("jt4_inbox_key")||"";
+    if(!key){
+      key=prompt("请输入收件箱密钥（部署时在 Vercel 环境变量 INBOX_SECRET 里设置的值）")||"";
+      if(key) localStorage.setItem("jt4_inbox_key",key);
+    }
+    return key;
+  };
+  const extractForItem=async item=>{
+    setInboxExtractions(prev=>({...prev,[item.id]:{loading:true}}));
+    try{
+      const res=await fetch("/api/extract-phd",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(item.type==="url"?{url:item.content}:{text:item.content}),
+      });
+      const json=await res.json();
+      setInboxExtractions(prev=>({...prev,[item.id]:{...json,loading:false}}));
+    }catch{
+      setInboxExtractions(prev=>({...prev,[item.id]:{loading:false,error:true}}));
+    }
+  };
+  const fetchInbox=async()=>{
+    const key=getInboxKey();
+    if(!key) return;
+    setInboxLoading(true); setInboxError("");
+    try{
+      const res=await fetch("/api/inbox-list?target=phd",{headers:{"X-Inbox-Key":key}});
+      if(res.status===401){ setInboxError("⚠️ 密钥错误，点右边「重设密钥」重新输入"); setInboxLoading(false); return; }
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.error||"failed");
+      const items=data.items||[];
+      setInboxItems(items);
+      items.forEach(item=>{ if(!inboxExtractions[item.id]) extractForItem(item); });
+    }catch{ setInboxError("⚠️ 加载失败，检查网络"); }
+    setInboxLoading(false);
+  };
+  const toggleInbox=()=>{
+    const next=!inboxOpen;
+    setInboxOpen(next);
+    if(next) fetchInbox();
+  };
+  const resetInboxKey=()=>{
+    localStorage.removeItem("jt4_inbox_key");
+    setInboxError("");
+    fetchInbox();
+  };
+  const deleteInboxItem=async id=>{
+    const key=getInboxKey();
+    if(key){
+      try{
+        await fetch("/api/inbox-delete",{
+          method:"POST",
+          headers:{"Content-Type":"application/json","X-Inbox-Key":key},
+          body:JSON.stringify({id,target:"phd"}),
+        });
+      }catch{}
+    }
+    setInboxItems(items=>items.filter(i=>i.id!==id));
+    setInboxExtractions(prev=>{const next={...prev};delete next[id];return next;});
+  };
+  const ignoreInboxItem=item=>{ if(confirm("确认忽略这条？")) deleteInboxItem(item.id); };
+  const convertInboxItem=async item=>{
+    setConvertingId(item.id);
+    let extracted=inboxExtractions[item.id];
+    if(!extracted||extracted.loading||extracted.error){
+      try{
+        const res=await fetch("/api/extract-phd",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify(item.type==="url"?{url:item.content}:{text:item.content}),
+        });
+        extracted=await res.json();
+      }catch{ extracted={}; }
+    }
+    setConvertingInboxId(item.id);
+    setInboxOpen(false);
+    setMainTab("applications");
+    setAModal({
+      ...EMPTY_APP,
+      school:extracted.school||"",
+      program:extracted.program||"",
+      cycle:extracted.cycle||"",
+      deadline:/^\d{4}-\d{2}-\d{2}$/.test(extracted.deadline||"")?extracted.deadline:"",
+      url:item.type==="url"?item.content:"",
+      note:item.content,
+    });
+    setConvertingId(null);
+  };
 
   const researchAreas=[...new Set(professors.map(p=>p.researchArea).filter(Boolean))].sort();
 
@@ -414,6 +513,9 @@ function App(){
           </div>
           <a href="index.html" style={{color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"}}
             onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>📋 秋招追踪</a>
+          <button onClick={toggleInbox} style={{background:"transparent",color:C.mist,border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
+            📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""}
+          </button>
         </div>
         <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4}}>
           <button style={mainTabBtn(mainTab==="professors")} onClick={()=>setMainTab("professors")}>
@@ -490,8 +592,40 @@ function App(){
       <Modal open={!!pModal} onClose={()=>setPModal(null)}>
         <ProfessorForm initial={pModal==="add"?null:pModal} applications={applications} researchAreas={researchAreas} onSave={saveProf} onCancel={()=>setPModal(null)}/>
       </Modal>
-      <Modal open={!!aModal} onClose={()=>setAModal(null)}>
-        <ApplicationForm initial={aModal==="add"?null:aModal} onSave={saveApp} onCancel={()=>setAModal(null)}/>
+      <Modal open={!!aModal} onClose={closeAModal}>
+        <ApplicationForm initial={aModal==="add"?null:aModal} onSave={saveApp} onCancel={closeAModal}/>
+      </Modal>
+      <Modal open={inboxOpen} onClose={()=>setInboxOpen(false)}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h3 style={{color:C.fir,fontSize:17}}>📥 收件箱</h3>
+          <button onClick={resetInboxKey} style={{background:"none",border:"none",color:C.textLight,fontSize:11,cursor:"pointer",textDecoration:"underline"}}>🔑 重设密钥</button>
+        </div>
+        {inboxLoading&&<div style={{fontSize:12,color:C.textLight,textAlign:"center",padding:"12px 0"}}>加载中…</div>}
+        {!inboxLoading&&inboxError&&<div style={{fontSize:12,color:"#b05050",textAlign:"center",padding:"12px 0"}}>{inboxError}</div>}
+        {!inboxLoading&&!inboxError&&inboxItems.length===0&&<div style={{fontSize:12,color:C.mist,textAlign:"center",padding:"12px 0"}}>收件箱是空的</div>}
+        {!inboxLoading&&!inboxError&&inboxItems.map(item=>{
+          const ext=inboxExtractions[item.id];
+          return(
+          <div key={item.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
+            <div style={{fontSize:12,color:C.text,wordBreak:"break-word",whiteSpace:"pre-wrap",marginBottom:6}}>
+              {item.type==="url"
+                ?<a href={item.content} target="_blank" rel="noopener noreferrer" style={{color:C.fir}}>{item.content}</a>
+                :item.content}
+            </div>
+            {ext&&ext.loading&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>🔍 识别中…</div>}
+            {ext&&!ext.loading&&!ext.error&&ext.school&&<div style={{fontSize:11,color:C.sage,fontWeight:600,marginBottom:6}}>推测：{ext.school}{ext.program?` · ${ext.program}`:""}</div>}
+            {ext&&!ext.loading&&!ext.error&&!ext.school&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>未识别出学校/项目信息</div>}
+            <div style={{fontSize:10,color:C.mist,marginBottom:6}}>{new Date(item.createdAt).toLocaleString()}</div>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>convertInboxItem(item)} disabled={convertingId===item.id}
+                style={{flex:1,padding:"5px 0",borderRadius:6,border:"none",background:convertingId===item.id?C.mist:C.sage,color:C.white,fontSize:11,cursor:convertingId===item.id?"not-allowed":"pointer"}}>
+                {convertingId===item.id?"提取中…":"转成网申项目"}
+              </button>
+              <button onClick={()=>ignoreInboxItem(item)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>忽略</button>
+            </div>
+          </div>
+          );
+        })}
       </Modal>
     </div>
   );

@@ -22,12 +22,13 @@ export default async function handler(req, res) {
   const key = req.headers["x-inbox-key"] || req.query.key;
   if (!key || key !== process.env.INBOX_SECRET) return res.status(401).json({ error: "Unauthorized" });
 
-  const { content } = req.body || {};
+  const { content, target } = req.body || {};
   const text = (content || "").trim();
   if (!text) return res.status(400).json({ error: "No content" });
+  const kvKey = target === "phd" ? "inbox_phd" : "inbox";
 
   try {
-    const raw = await kv(["GET", "inbox"]);
+    const raw = await kv(["GET", kvKey]);
     const items = raw ? JSON.parse(raw) : [];
     items.push({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -35,7 +36,7 @@ export default async function handler(req, res) {
       type: /^https?:\/\//i.test(text) ? "url" : "text",
       createdAt: new Date().toISOString(),
     });
-    await kv(["SET", "inbox", JSON.stringify(items)]);
+    await kv(["SET", kvKey, JSON.stringify(items)]);
     res.status(200).json({ ok: true, count: items.length });
   } catch (err) {
     res.status(500).json({ error: "Failed to save", detail: err.message });

@@ -22,14 +22,15 @@ export default async function handler(req, res) {
   const key = req.headers["x-inbox-key"] || req.query.key;
   if (!key || key !== process.env.INBOX_SECRET) return res.status(401).json({ error: "Unauthorized" });
 
-  const { id } = req.body || {};
+  const { id, target } = req.body || {};
   if (!id) return res.status(400).json({ error: "No id" });
+  const kvKey = target === "phd" ? "inbox_phd" : "inbox";
 
   try {
-    const raw = await kv(["GET", "inbox"]);
+    const raw = await kv(["GET", kvKey]);
     const items = raw ? JSON.parse(raw) : [];
     const filtered = items.filter(i => i.id !== id);
-    await kv(["SET", "inbox", JSON.stringify(filtered)]);
+    await kv(["SET", kvKey, JSON.stringify(filtered)]);
     res.status(200).json({ ok: true, count: filtered.length });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete", detail: err.message });

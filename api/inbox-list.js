@@ -22,8 +22,10 @@ export default async function handler(req, res) {
   const key = req.headers["x-inbox-key"] || req.query.key;
   if (!key || key !== process.env.INBOX_SECRET) return res.status(401).json({ error: "Unauthorized" });
 
+  const kvKey = req.query.target === "phd" ? "inbox_phd" : "inbox";
+
   try {
-    const raw = await kv(["GET", "inbox"]);
+    const raw = await kv(["GET", kvKey]);
     const items = raw ? JSON.parse(raw) : [];
     items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     res.status(200).json({ items });

@@ -67,6 +67,16 @@ const EMPTY_APP={school:"",program:"",cycle:"",deadline:"",rolling:false,status:
 const inp={width:"100%",padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:14,color:C.text,background:C.cream};
 const lbl={fontSize:12,color:C.textLight,marginBottom:4,display:"block",fontWeight:600};
 
+const URL_RE=/(https?:\/\/[^\s<>"'）】」』，。！？；：]+)/g;
+function linkifyText(text){
+  if(!text) return text;
+  return String(text).split(URL_RE).map((part,i)=>
+    /^https?:\/\//.test(part)
+      ?<a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{color:C.fir,wordBreak:"break-all"}} onClick={e=>e.stopPropagation()}>{part}</a>
+      :part
+  );
+}
+
 function migrateProfessor(p){
   return {
     name:          p.name          ?? "",
@@ -134,7 +144,7 @@ function ContactLog({entries,onChange}){
                   <span style={{fontSize:11,color:C.mist}}>{m.date}</span>
                   <button onClick={()=>remove(m.id)} style={{background:"none",border:"none",color:"#b05050",cursor:"pointer",fontSize:13,lineHeight:1}}>×</button>
                 </div>
-                <div style={{fontSize:12,color:C.text,marginTop:2,wordBreak:"break-word"}}>{m.note}</div>
+                <div style={{fontSize:12,color:C.text,marginTop:2,wordBreak:"break-word"}}>{linkifyText(m.note)}</div>
               </div>
             </div>
           ))}
@@ -233,7 +243,7 @@ function ProfessorCard({prof,linkedApps,onEdit,onDel}){
           {linkedApps.length>0&&(
             <div style={{fontSize:12,color:C.textLight,marginBottom:6,wordBreak:"break-word"}}>🎓 关联项目：{linkedApps.map(a=>`${a.school}·${a.program}`).join('，')}</div>
           )}
-          {prof.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",wordBreak:"break-word"}}>📝 {prof.note}</div>}
+          {prof.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",wordBreak:"break-word"}}>📝 {linkifyText(prof.note)}</div>}
         </div>
       </div>
       <div style={{display:"flex",gap:6,marginTop:8}}>
@@ -359,7 +369,7 @@ function ApplicationCard({app,linkedProfs,onEdit,onDel}){
           {linkedProfs.length>0&&(
             <div style={{fontSize:12,color:C.textLight,marginBottom:6,wordBreak:"break-word"}}>🧑‍🏫 关联导师：{linkedProfs.map(p=>p.name).join('，')}</div>
           )}
-          {app.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",wordBreak:"break-word"}}>📝 {app.note}</div>}
+          {app.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",wordBreak:"break-word"}}>📝 {linkifyText(app.note)}</div>}
         </div>
       </div>
       <div style={{display:"flex",gap:6,marginTop:8}}>

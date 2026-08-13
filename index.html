@@ -172,6 +172,16 @@ function findDuplicateWarning(companyName,currentId,jobs,toApply){
   return `⚠️ 已有${parts.join('、')}`;
 }
 
+const URL_RE=/(https?:\/\/[^\s<>"'）】」』，。！？；：]+)/g;
+function linkifyText(text){
+  if(!text) return text;
+  return String(text).split(URL_RE).map((part,i)=>
+    /^https?:\/\//.test(part)
+      ?<a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{color:C.fir,wordBreak:"break-all"}} onClick={e=>e.stopPropagation()}>{part}</a>
+      :part
+  );
+}
+
 function Badge({s}){
   const x=STATUS.find(i=>i.key===s)||STATUS[0];
   return <span style={{background:x.bg,color:x.color,padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>{x.label}</span>;
@@ -240,7 +250,7 @@ function MilestoneEditor({milestones,onChange,company,position}){
                     <button onClick={()=>remove(m.id)} style={{background:"none",border:"none",color:"#b05050",cursor:"pointer",fontSize:13,lineHeight:1}}>×</button>
                   </div>
                 </div>
-                {m.note&&<div style={{fontSize:11,color:C.textLight,marginTop:2,fontStyle:"italic"}}>{m.note}</div>}
+                {m.note&&<div style={{fontSize:11,color:C.textLight,marginTop:2,fontStyle:"italic",wordBreak:"break-word"}}>{linkifyText(m.note)}</div>}
               </div>
             </div>
           ))}
@@ -421,7 +431,7 @@ function KanbanCard({job,onEdit,onDel,isDragging,isRejected,isDropTarget,onDragS
           </div>
         )}
         {ms.length>1&&<div style={{fontSize:11,color:C.textLight,marginBottom:6}}>+{ms.length-1} 个历史环节</div>}
-        {job.note&&<div style={{fontSize:11,color:C.textLight,fontStyle:"italic",wordBreak:"break-word",whiteSpace:"pre-wrap",marginBottom:6}}>📝 {job.note}</div>}
+        {job.note&&<div style={{fontSize:11,color:C.textLight,fontStyle:"italic",wordBreak:"break-word",whiteSpace:"pre-wrap",marginBottom:6}}>📝 {linkifyText(job.note)}</div>}
         <div style={{display:"flex",gap:6,marginTop:4}}>
           <button onClick={()=>setExpanded(v=>!v)} style={{flex:1,padding:"3px 0",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>收起</button>
           <button onClick={onEdit} style={{flex:1,padding:"3px 0",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>编辑</button>
@@ -490,7 +500,7 @@ function ToApplyCard({item,urgent,expired,daysLeft,priorityColor,onPromote,onEdi
         <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginTop:4}}>
           {item.salary&&<div style={{fontSize:12,color:C.textLight,marginBottom:4}}>💰 {item.salary}</div>}
           {item.location&&<div style={{fontSize:12,color:C.textLight,marginBottom:4}}>📍 {item.location}</div>}
-          {item.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",whiteSpace:"pre-wrap",marginBottom:4}}>📝 {item.note}</div>}
+          {item.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",whiteSpace:"pre-wrap",marginBottom:4}}>📝 {linkifyText(item.note)}</div>}
         </div>
       </div>
       <div style={{display:"flex",gap:6,marginTop:8}}>
@@ -519,7 +529,7 @@ function CompanyCard({company,positions,onAddPosition,onEdit,onDel}){
         </div>
       </div>
       {company.industry&&<div style={{fontSize:12,color:C.textLight,marginBottom:6}}>{company.industry}</div>}
-      {company.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",whiteSpace:"pre-wrap",marginBottom:6}}>📝 {company.note}</div>}
+      {company.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",whiteSpace:"pre-wrap",marginBottom:6}}>📝 {linkifyText(company.note)}</div>}
       <div className={`collapsible ${expanded?"open":"closed"}`}>
         <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4,marginBottom:8}}>
           {positions.length===0&&<div style={{fontSize:12,color:C.mist,textAlign:"center",padding:"8px 0"}}>暂无关联的具体职位</div>}

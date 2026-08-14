@@ -747,6 +747,8 @@ function App(){
   const [dragId,setDragId]=useState(null);
   const [dragOverCardId,setDragOverCardId]=useState(null);
   const [manualExpand,setManualExpand]=useState({});
+  const [reviewOpen,setReviewOpen]=useState(true);
+  const [trackedOpen,setTrackedOpen]=useState(false);
   const [inboxItems,setInboxItems]=useState([]);
   const [inboxOpen,setInboxOpen]=useState(false);
   const [inboxLoading,setInboxLoading]=useState(false);
@@ -822,6 +824,21 @@ function App(){
     };
     r.readAsText(file);e.target.value="";
   };
+
+  const companiesWithPositions=companies.map(co=>{
+    const linkedJobs=jobs.filter(j=>j.companyId===co.id).map(j=>{
+      const st=STATUS.find(s=>s.key===j.status)||STATUS[0];
+      return {id:`job-${j.id}`,position:j.position,tagLabel:st.label,tagColor:st.color,tagBg:st.bg};
+    });
+    const linkedToApply=toApply.filter(t=>t.companyId===co.id).map(t=>({
+      id:`ta-${t.id}`,position:t.position,tagLabel:t.intent,
+      tagColor:t.intent==="长期关注"?C.textLight:C.white,
+      tagBg:t.intent==="长期关注"?C.frost:C.sage,
+    }));
+    return {co,positions:[...linkedJobs,...linkedToApply]};
+  });
+  const companiesNeedReview=companiesWithPositions.filter(x=>x.positions.length===0);
+  const companiesTracked=companiesWithPositions.filter(x=>x.positions.length>0);
 
   const filtered=jobs.filter(j=>filter==="all"||j.status===filter).filter(j=>typeFilter==="all"||j.type===typeFilter);
   const total=jobs.length,interviews=jobs.filter(j=>j.status==="interview").length;
@@ -998,26 +1015,32 @@ function App(){
                 <div style={{fontSize:13}}>看到心仪公司的秋招公告，但还没确定具体岗位时，先在这里记一笔</div>
               </div>
             )}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
-              {companies.map(co=>{
-                const linkedJobs=jobs.filter(j=>j.companyId===co.id).map(j=>{
-                  const st=STATUS.find(s=>s.key===j.status)||STATUS[0];
-                  return {id:`job-${j.id}`,position:j.position,tagLabel:st.label,tagColor:st.color,tagBg:st.bg};
-                });
-                const linkedToApply=toApply.filter(t=>t.companyId===co.id).map(t=>({
-                  id:`ta-${t.id}`,position:t.position,tagLabel:t.intent,
-                  tagColor:t.intent==="长期关注"?C.textLight:C.white,
-                  tagBg:t.intent==="长期关注"?C.frost:C.sage,
-                }));
-                const positions=[...linkedJobs,...linkedToApply];
-                return(
-                  <CompanyCard key={co.id} company={co} positions={positions}
-                    onAddPosition={()=>setTaModal({...EMPTY_TOAPPLY,company:co.company,companyId:co.id})}
-                    onEdit={()=>setCModal(co)}
-                    onDel={()=>delCo(co.id)}/>
-                );
-              })}
-            </div>
+            {companies.length>0&&[
+              {label:"待筛选",icon:"🔍",color:C.sage,items:companiesNeedReview,isOpen:reviewOpen,setOpen:setReviewOpen,emptyText:"没有待筛选的公司了"},
+              {label:"已有职位在跟进",icon:"✅",color:C.mist,items:companiesTracked,isOpen:trackedOpen,setOpen:setTrackedOpen,emptyText:"还没有公司进展到这一步"},
+            ].map(group=>(
+              <div key={group.label} style={{background:C.white,border:`1.5px solid ${C.border}`,borderRadius:14,overflow:"hidden",marginBottom:10}}>
+                <div style={{height:4,background:group.color}}/>
+                <div onClick={()=>group.setOpen(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",cursor:"pointer"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontWeight:700,fontSize:14,color:C.fir}}>{group.icon} {group.label}</span>
+                    <span style={{background:C.frost,color:C.moss,borderRadius:12,padding:"1px 9px",fontSize:12,fontWeight:700}}>{group.items.length}</span>
+                  </div>
+                  <span style={{color:C.mist,fontSize:13}}>{group.isOpen?"▲":"▼"}</span>
+                </div>
+                {group.isOpen&&(
+                  <div className="tab-content" style={{padding:"0 16px 16px",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+                    {group.items.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",color:C.mist,fontSize:12,padding:"14px 0"}}>{group.emptyText}</div>}
+                    {group.items.map(({co,positions})=>(
+                      <CompanyCard key={co.id} company={co} positions={positions}
+                        onAddPosition={()=>setTaModal({...EMPTY_TOAPPLY,company:co.company,companyId:co.id})}
+                        onEdit={()=>setCModal(co)}
+                        onDel={()=>delCo(co.id)}/>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
 

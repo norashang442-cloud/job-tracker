@@ -440,9 +440,12 @@ function KanbanCard({job,onEdit,onDel,isDragging,isRejected,isDropTarget,onDragS
           <span style={{color:C.mist,fontSize:11,marginLeft:"auto"}}>{job.date}</span>
         </div>
         {latest&&(
-          <div style={{background:C.frost,borderRadius:7,padding:"5px 8px",marginBottom:6,fontSize:11,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{color:stageColor[latest.stage]||C.sage,fontWeight:600}}>▶ {latest.stage}</span>
-            <span style={{color:C.mist}}>{latest.date}</span>
+          <div style={{background:C.frost,borderRadius:7,padding:"5px 8px",marginBottom:6,fontSize:11}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:stageColor[latest.stage]||C.sage,fontWeight:600}}>▶ {latest.stage}</span>
+              <span style={{color:C.mist}}>{latest.date}</span>
+            </div>
+            {latest.note&&<div style={{color:C.textLight,marginTop:3,wordBreak:"break-word",fontStyle:"italic"}}>{linkifyText(latest.note)}</div>}
           </div>
         )}
         {ms.length>1&&<div style={{fontSize:11,color:C.textLight,marginBottom:6}}>+{ms.length-1} 个历史环节</div>}

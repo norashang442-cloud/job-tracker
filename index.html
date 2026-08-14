@@ -225,12 +225,24 @@ function MilestoneEditor({milestones,onChange,company,position}){
   const [date,setDate]=useState(new Date().toISOString().slice(0,10));
   const [time,setTime]=useState("");
   const [note,setNote]=useState("");
-  const add=()=>{
-    if(!stage||!date) return;
-    onChange([...milestones,{id:Date.now(),stage,date,time,note}].sort((a,b)=>a.date.localeCompare(b.date)));
-    setNote("");setTime("");
+  const [editingId,setEditingId]=useState(null);
+  const resetForm=()=>{
+    setEditingId(null);setStage(STAGES[0]);setDate(new Date().toISOString().slice(0,10));setTime("");setNote("");
   };
-  const remove=id=>onChange(milestones.filter(m=>m.id!==id));
+  const startEdit=m=>{
+    setEditingId(m.id);setStage(m.stage);setDate(m.date);setTime(m.time||"");setNote(m.note||"");
+  };
+  const submit=()=>{
+    if(!stage||!date) return;
+    if(editingId){
+      onChange(milestones.map(m=>m.id===editingId?{...m,stage,date,time,note}:m).sort((a,b)=>a.date.localeCompare(b.date)));
+      resetForm();
+    }else{
+      onChange([...milestones,{id:Date.now(),stage,date,time,note}].sort((a,b)=>a.date.localeCompare(b.date)));
+      setNote("");setTime("");
+    }
+  };
+  const remove=id=>{ onChange(milestones.filter(m=>m.id!==id)); if(editingId===id) resetForm(); };
   const addToCalendar=m=>downloadICS(`${company}-${position}-${m.stage}.ics`,buildMilestoneICS({company,position,stage:m.stage,date:m.date,time:m.time,note:m.note}));
   const stageColor={"Online Test":"#5C7A60","Assessment Centre":"#2F5A7A","Individual Interview":"#6A4F8A","Group Interview":"#7A6E2F","Power Day":"#7A3030","Video Interview":"#2F6B6B","Phone Screen":"#4A6350","HR Round":"#5A4A2F","Technical Interview":"#2F4A7A","Offer Call":"#2F6640","其他":"#888"};
   return(
@@ -241,11 +253,12 @@ function MilestoneEditor({milestones,onChange,company,position}){
           {milestones.map(m=>(
             <div key={m.id} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8,position:"relative"}}>
               <div style={{width:10,height:10,borderRadius:"50%",background:stageColor[m.stage]||C.sage,flexShrink:0,marginTop:3,zIndex:1}}/>
-              <div style={{flex:1,background:C.cream,borderRadius:8,padding:"6px 10px",border:`1px solid ${C.border}`}}>
+              <div style={{flex:1,background:editingId===m.id?C.frost:C.cream,borderRadius:8,padding:"6px 10px",border:`1px solid ${editingId===m.id?C.sage:C.border}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <span style={{fontSize:12,fontWeight:700,color:stageColor[m.stage]||C.sage}}>{m.stage}</span>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <span style={{fontSize:11,color:C.mist}}>{m.date}{m.time?` ${m.time}`:""}</span>
+                    <button onClick={()=>startEdit(m)} title="编辑" style={{background:"none",border:"none",color:C.sage,cursor:"pointer",fontSize:12,lineHeight:1}}>✎</button>
                     <button onClick={()=>addToCalendar(m)} title="添加到日历" style={{background:"none",border:"none",color:C.sage,cursor:"pointer",fontSize:13,lineHeight:1}}>📅</button>
                     <button onClick={()=>remove(m.id)} style={{background:"none",border:"none",color:"#b05050",cursor:"pointer",fontSize:13,lineHeight:1}}>×</button>
                   </div>
@@ -257,6 +270,7 @@ function MilestoneEditor({milestones,onChange,company,position}){
         </div>
       )}
       <div style={{background:C.frost,borderRadius:10,padding:10}}>
+        {editingId&&<div style={{fontSize:11,color:C.moss,fontWeight:600,marginBottom:8}}>✎ 正在编辑该环节</div>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
           <div style={{gridColumn:"1/-1"}}>
             <label style={{...lbl,fontSize:11}}>环节</label>
@@ -275,7 +289,8 @@ function MilestoneEditor({milestones,onChange,company,position}){
         </div>
         <div style={{display:"flex",gap:8}}>
           <input style={{...inp,fontSize:12,flex:1}} value={note} onChange={e=>setNote(e.target.value)} placeholder="备注（可选）"/>
-          <button onClick={add} style={{padding:"8px 14px",borderRadius:8,border:"none",background:C.sage,color:C.white,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>＋ 添加</button>
+          {editingId&&<button onClick={resetForm} style={{padding:"8px 14px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.textLight,cursor:"pointer",fontSize:13,whiteSpace:"nowrap"}}>取消</button>}
+          <button onClick={submit} style={{padding:"8px 14px",borderRadius:8,border:"none",background:C.sage,color:C.white,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>{editingId?"✓ 保存修改":"＋ 添加"}</button>
         </div>
       </div>
     </div>

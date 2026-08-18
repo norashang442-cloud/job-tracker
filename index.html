@@ -902,7 +902,10 @@ function App(){
       if(!res.ok) throw new Error(data.error||"failed");
       const items=data.items||[];
       setInboxItems(items);
-      items.forEach(item=>{ if(!inboxExtractions[item.id]) extractForItem(item); });
+      items.forEach(item=>{
+        const lineCount=new Set(item.content.split("\n").map(l=>l.trim()).filter(Boolean)).size;
+        if(lineCount<=1&&!inboxExtractions[item.id]) extractForItem(item);
+      });
     }catch{ setInboxError("⚠️ 加载失败，检查网络"); }
     setInboxLoading(false);
   };
@@ -931,6 +934,16 @@ function App(){
     setInboxExtractions(prev=>{const next={...prev};delete next[id];return next;});
   };
   const ignoreInboxItem=item=>{ if(confirm("确认忽略这条？")) deleteInboxItem(item.id); };
+  const batchSplitInboxItem=(item,lines)=>{
+    if(!lines||lines.length<2) return;
+    if(!confirm(`确认拆分成 ${lines.length} 个关注公司？`)) return;
+    const now=Date.now();
+    const newCompanies=lines.map((name,i)=>({...EMPTY_COMPANY,company:name,id:now+i}));
+    setCompanies(c=>[...c,...newCompanies]);
+    setInboxOpen(false);
+    setMainTab("companies");
+    deleteInboxItem(item.id);
+  };
   const convertInboxItem=async item=>{
     setConvertingId(item.id);
     let extracted=inboxExtractions[item.id];
@@ -973,6 +986,9 @@ function App(){
           <button onClick={toggleInbox} style={{background:"transparent",color:C.mist,border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
             📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""}
           </button>
+          <a href={`https://claude.ai/new?q=${encodeURIComponent("帮我筛查这张秋招公司清单图片")}`} target="_blank" rel="noopener noreferrer"
+            style={{color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"}}
+            onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>🔍 筛查陌生公司</a>
         </div>
         <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4}}>
           <button style={mainTabBtn(mainTab==="companies")} onClick={()=>setMainTab("companies")}>
@@ -1217,6 +1233,8 @@ function App(){
         {!inboxLoading&&!inboxError&&inboxItems.length===0&&<div style={{fontSize:12,color:C.mist,textAlign:"center",padding:"12px 0"}}>收件箱是空的</div>}
         {!inboxLoading&&!inboxError&&inboxItems.map(item=>{
           const ext=inboxExtractions[item.id];
+          const lines=[...new Set(item.content.split("\n").map(l=>l.trim()).filter(Boolean))];
+          const isList=lines.length>1;
           return(
           <div key={item.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
             <div style={{fontSize:12,color:C.text,wordBreak:"break-word",whiteSpace:"pre-wrap",marginBottom:6}}>
@@ -1224,15 +1242,22 @@ function App(){
                 ?<a href={item.content} target="_blank" rel="noopener noreferrer" style={{color:C.fir}}>{item.content}</a>
                 :item.content}
             </div>
-            {ext&&ext.loading&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>🔍 识别中…</div>}
-            {ext&&!ext.loading&&!ext.error&&ext.company&&<div style={{fontSize:11,color:C.sage,fontWeight:600,marginBottom:6}}>推测：{ext.company}{ext.industry?` · ${ext.industry}`:""}</div>}
-            {ext&&!ext.loading&&!ext.error&&!ext.company&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>未识别出公司信息</div>}
+            {isList&&<div style={{fontSize:11,color:C.moss,marginBottom:6}}>看起来是一份清单（{lines.length}行）</div>}
+            {!isList&&ext&&ext.loading&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>🔍 识别中…</div>}
+            {!isList&&ext&&!ext.loading&&!ext.error&&ext.company&&<div style={{fontSize:11,color:C.sage,fontWeight:600,marginBottom:6}}>推测：{ext.company}{ext.industry?` · ${ext.industry}`:""}</div>}
+            {!isList&&ext&&!ext.loading&&!ext.error&&!ext.company&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>未识别出公司信息</div>}
             <div style={{fontSize:10,color:C.mist,marginBottom:6}}>{new Date(item.createdAt).toLocaleString()}</div>
-            <div style={{display:"flex",gap:6}}>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               <button onClick={()=>convertInboxItem(item)} disabled={convertingId===item.id}
-                style={{flex:1,padding:"5px 0",borderRadius:6,border:"none",background:convertingId===item.id?C.mist:C.sage,color:C.white,fontSize:11,cursor:convertingId===item.id?"not-allowed":"pointer"}}>
+                style={{flex:1,minWidth:90,padding:"5px 0",borderRadius:6,border:"none",background:convertingId===item.id?C.mist:C.sage,color:C.white,fontSize:11,cursor:convertingId===item.id?"not-allowed":"pointer"}}>
                 {convertingId===item.id?"提取中…":"转成关注公司"}
               </button>
+              {isList&&(
+                <button onClick={()=>batchSplitInboxItem(item,lines)}
+                  style={{flex:1,minWidth:90,padding:"5px 0",borderRadius:6,border:`1px solid ${C.sage}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>
+                  批量拆分成{lines.length}个
+                </button>
+              )}
               <button onClick={()=>ignoreInboxItem(item)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>忽略</button>
             </div>
           </div>

@@ -54,6 +54,28 @@
 
 数据存储在 `localStorage` 的 `phd_professors` / `phd_applications` / `phd_research_tags`（研究方向标签池），与秋招追踪器的存储完全独立，互不影响。目前还没有做研究计划模板库（相似方向导师共用的研究计划模板管理），后续视需要再加。
 
+## `resume.html` · 简历定制工作流
+
+给 `resume-workflow/`（本地 DeepSeek API 简历定制脚本）配的网页前端：四步走——JD 拆解 → 定制方案 → JSON 修改指令 → 生成定制 `.docx`，每一步的产物都能直接在网页里编辑、保存后再继续，不用去改文件；也支持一键连续生成全部四步。
+
+**这是一个完全本地化的个人工具，不是"部署到 Vercel 就能给任何人用"的功能**：
+
+- 页面本身（`resume.html`）不管是本地打开、还是通过部署的 Vercel 线上站点打开，所有数据请求都写死发往 `http://127.0.0.1:5055`——不管从哪里加载这个页面，真正起作用的永远是**你自己电脑上**跑着的本地服务（`resume-workflow/server/app.py`，用根目录的 `start-resume-tool.bat` 启动）。
+- 简历文件、生成的 JD 拆解/方案/JSON 指令/定制简历，全部存在本机的 `resume-workflow/input/` `resume-workflow/output/` 目录，从不上传到任何服务器（包括 Vercel、GitHub），不会随链接分享给别人，也不会在别的设备上出现。
+- 为了能在 Vercel 线上页面上一键唤起本地服务（不用手动去文件夹找 `.bat` 双击），额外注册了一个 `resumeworkflow://` 自定义协议（`resume-workflow/register-protocol.ps1`），只写入**当前 Windows 用户**的注册表，只对这台电脑这个账号生效。
+
+**把 Vercel 链接发给别人 / 在别的设备上打开，会发生什么**：
+
+| 功能 | 结果 |
+|---|---|
+| 简历定制（历史任务列表、上传简历、生成四步、下载） | 完全不可用——对方电脑没有本地服务在跑，页面会直接提示"连不上本地服务" |
+| "📝 简历定制" 跳转按钮 / `resumeworkflow://` 协议链接 | 大概率没反应或报错——协议只注册在你自己的电脑上，别的设备没有 |
+| 秋招投递追踪 / 待投岗位 / 公司关注（`index.html`） | 功能可以正常操作，但看到的是一个全新的空追踪器——数据存在浏览器 `localStorage`，跟着"这台设备的这个浏览器"走，不跟着链接走 |
+| 自动提取职位信息（粘贴 JD/文字自动识别公司、职位等） | 正常可用——走的是 Vercel 云端 Serverless Function，跟本机无关 |
+| 手机速记收件箱 | 技术上能访问（数据存 Vercel KV，真正的云端共享），但需要知道 `INBOX_SECRET` 密钥，不知道密钥的人会被拒绝 |
+
+简单说：这个项目里真正"云端共享"的只有收件箱（需要密钥）和自动提取这两个 Serverless Function；求职追踪的数据是各浏览器各存一份，简历定制则是完全绑死在你本机的工具。分享 Vercel 链接分享的是"同一份代码/页面"，不是"同一份数据"。
+
 ## 技术实现
 
 - `index.html` / `phd.html` 是纯静态单文件：React 18 + Babel Standalone，均通过 CDN 引入，无需构建步骤，直接用浏览器打开即可运行，共享同一套视觉样式（配色、卡片、弹窗动效）。两个页面顶部各有一个跳转链接互相导航，但不共享任何数据。
@@ -75,3 +97,5 @@
    - `KV_REST_API_URL` / `KV_REST_API_TOKEN`——在 Vercel 项目的 Storage 里关联一个 **Upstash for Redis** 数据库，这两个会自动生成，不用手填
    - `INBOX_SECRET`——自己定一串字符串，作为 `capture.html` 和收件箱面板的访问密钥
 4. 改完环境变量后如果没有自动触发重新部署，去 Deployments 页手动 Redeploy 一下。
+
+`resume-workflow/` 简历定制工具不在这个流程里——它不部署到 Vercel，是纯本地运行的工具，每个人要用都得在自己电脑上单独装 Python 依赖、配自己的 DeepSeek key、跑一遍 `register-protocol.ps1`，跟 fork/部署这个仓库是两件事。

@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>简历定制工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'PingFang SC','Inter',sans-serif;background:#F2F7F1;color:#1C2E22;}
+button:focus,input:focus,select:focus,textarea:focus{outline:2px solid #5C7A60;outline-offset:1px;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:#F2F7F1;}
+::-webkit-scrollbar-thumb{background:#A8C5A0;border-radius:3px;}
+.card:hover{box-shadow:0 4px 16px rgba(47,69,56,0.2)!important;}
+
+/* Button press effect */
+button{transition:transform 0.1s,box-shadow 0.1s,background 0.15s!important;}
+button:hover:not(:disabled){transform:scale(0.97);}
+button:active:not(:disabled){transform:scale(0.95);}
+button:disabled{opacity:0.5;cursor:not-allowed;}
+
+/* Tab fade */
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.tab-content{animation:fadeIn 0.18s ease}
+
+.resize-handle{background:#D4E8D0;transition:background 0.1s;}
+.resize-handle:hover,.resize-handle.dragging{background:#A8C5A0;}
+</style>
+</head>
+<body><div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef}=React;
+const API="http://127.0.0.1:5055";
+const C={
+  fir:"#2F4538",moss:"#3D5A47",sage:"#5C7A60",reed:"#7A9E7E",
+  mist:"#A8C5A0",frost:"#D4E8D0",cream:"#F2F7F1",white:"#FFFFFF",
+  text:"#1C2E22",textLight:"#4A6350",border:"#C2D9BE",shadow:"rgba(47,69,56,0.12)"
+};
+const inp={width:"100%",padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:14,color:C.text,background:C.cream};
+const inpArea={...inp,minHeight:100,resize:"vertical",fontFamily:"inherit",lineHeight:1.5};
+const lbl={fontSize:12,color:C.textLight,marginBottom:4,display:"block",fontWeight:600};
+const card={background:C.white,borderRadius:12,padding:16,boxShadow:`0 2px 8px ${C.shadow}`};
+const btnPrimary={background:C.fir,color:C.white,border:"none",borderRadius:8,padding:"8px 16px",fontSize:13,fontWeight:600,cursor:"pointer"};
+const btnGhost={background:"transparent",color:C.sage,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 16px",fontSize:13,fontWeight:600,cursor:"pointer"};
+const navPill={color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"};
+
+async function apiGet(path){
+  const res=await fetch(API+path);
+  if(!res.ok){ const e=await res.json().catch(()=>({error:res.statusText})); throw new Error(e.error||"请求失败"); }
+  return res.json();
+}
+async function apiJson(path, method, body){
+  const res=await fetch(API+path,{method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});
+  if(!res.ok){ const e=await res.json().catch(()=>({error:res.statusText})); throw new Error(e.error||"请求失败"); }
+  return res.json();
+}
+
+function ResizableTextarea({value,onChange,placeholder,minHeight,mono}){
+  const [height,setHeight]=useState(minHeight);
+  const [dragging,setDragging]=useState(false);
+
+  const onHandleMouseDown=e=>{
+    e.preventDefault();
+    const startY=e.clientY;
+    const startHeight=height;
+    setDragging(true);
+    document.body.style.userSelect="none";
+    const onMove=ev=>{
+      setHeight(Math.max(48,startHeight+(ev.clientY-startY)));
+    };
+    const onUp=()=>{
+      setDragging(false);
+      document.body.style.userSelect="";
+      document.removeEventListener("mousemove",onMove);
+      document.removeEventListener("mouseup",onUp);
+    };
+    document.addEventListener("mousemove",onMove);
+    document.addEventListener("mouseup",onUp);
+  };
+
+  return(
+    <div>
+      <textarea value={value} onChange={onChange} placeholder={placeholder}
+        style={{...inpArea,height,minHeight:"unset",resize:"none",borderRadius:"8px 8px 0 0",fontFamily:mono?"monospace":"inherit"}}/>
+      <div className={`resize-handle${dragging?" dragging":""}`} onMouseDown={onHandleMouseDown}
+        style={{height:10,cursor:"ns-resize",display:"flex",alignItems:"center",justifyContent:"center",
+          border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px"}}>
+        <div style={{width:32,height:3,borderRadius:2,background:C.reed}}/>
+      </div>
+    </div>
+  );
+}
+
+function StepPanel({title,content,placeholder,busy,disabled,onGenerate,onSave,extra,mono,hint}){
+  const [val,setVal]=useState(content||"");
+  useEffect(()=>{ setVal(content||""); },[content]);
+  const dirty=val!==(content||"");
+  const generated=content!==null&&content!==undefined;
+  return (
+    <div className="tab-content" style={{...card,marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
+        <div style={{fontWeight:700,color:C.fir}}>{title}</div>
+        <div style={{display:"flex",gap:8}}>
+          {dirty && <button style={btnGhost} onClick={()=>onSave(val)}>保存修改</button>}
+          <button style={btnPrimary} disabled={disabled||busy} onClick={onGenerate}>
+            {busy?"生成中...":(generated?"重新生成":"生成")}
+          </button>
+        </div>
+      </div>
+      {hint && <div style={{fontSize:12,color:C.textLight,marginBottom:10,lineHeight:1.5}}>{hint}</div>}
+      {extra}
+      {generated ? (
+        <ResizableTextarea value={val} onChange={e=>setVal(e.target.value)} minHeight={280} mono={mono}/>
+      ) : (
+        <div style={{fontSize:12,color:C.textLight}}>{placeholder}</div>
+      )}
+    </div>
+  );
+}
+
+function App(){
+  const [companies,setCompanies]=useState([]);
+  const [selected,setSelected]=useState(null);
+  const [lang,setLang]=useState("zh");
+  const [resumes,setResumes]=useState({zh:{exists:false},en:{exists:false}});
+  const [draft,setDraft]=useState({step0:"",step1:null,step2:null,step3:null,docx:{zh:false,en:false}});
+  const [busy,setBusy]=useState({});
+  const [error,setError]=useState("");
+  const [serverDown,setServerDown]=useState(false);
+  const params=new URLSearchParams(window.location.search);
+  const [newCompany,setNewCompany]=useState(params.get("company")||"");
+  const [newJd,setNewJd]=useState(params.get("jd")||"");
+
+  const refreshCompanies=async()=>{
+    try{ const list=await apiGet("/api/companies"); setCompanies(list); setServerDown(false); }
+    catch(e){ setServerDown(true); }
+  };
+  const refreshResumes=async()=>{
+    try{ const r=await apiGet("/api/resumes"); setResumes(r); }catch(e){}
+  };
+  const loadState=async(company)=>{
+    try{
+      const s=await apiGet(`/api/state/${encodeURIComponent(company)}`);
+      setDraft({step0:s.step0||"",step1:s.step1,step2:s.step2,step3:s.step3,docx:s.docx});
+    }catch(e){ setError(e.message); }
+  };
+
+  useEffect(()=>{ refreshCompanies(); refreshResumes(); },[]);
+  useEffect(()=>{ if(selected) loadState(selected); },[selected]);
+
+  const setBusyFlag=(key,val)=>setBusy(b=>({...b,[key]:val}));
+
+  const runGenerate=async(key,path,body,onOk)=>{
+    setError(""); setBusyFlag(key,true);
+    try{
+      const res=await apiJson(path,"POST",body);
+      onOk(res);
+      await refreshCompanies();
+    }catch(e){ setError(e.message); throw e; }
+    finally{ setBusyFlag(key,false); }
+  };
+
+  const genBreakdown=(company,jd)=>runGenerate("breakdown","/api/generate/breakdown",{company,jd_text:jd},res=>{
+    setDraft(d=>({...d,step0:jd,step1:res.content}));
+  });
+  const genPlan=(company)=>runGenerate("plan","/api/generate/plan",{company,lang},res=>{
+    setDraft(d=>({...d,step2:res.content}));
+  });
+  const genJson=(company)=>runGenerate("json","/api/generate/json",{company},res=>{
+    setDraft(d=>({...d,step3:res.content}));
+  });
+  const genPatch=(company)=>runGenerate("patch","/api/generate/patch",{company,lang},res=>{
+    setDraft(d=>({...d,docx:{...d.docx,[lang]:true}}));
+  });
+
+  const saveContent=async(step,content)=>{
+    if(!selected) return;
+    setError("");
+    try{
+      await apiJson(`/api/content/${step}/${encodeURIComponent(selected)}`,"PUT",{content});
+      setDraft(d=>({...d,[step]:content}));
+      await refreshCompanies();
+    }catch(e){ setError(e.message); }
+  };
+
+  const createCompany=async()=>{
+    const company=newCompany.trim();
+    if(!company||!newJd.trim()){ setError("请填写公司名和 JD 内容"); return; }
+    try{
+      await genBreakdown(company,newJd);
+      setSelected(company);
+      setNewCompany(""); setNewJd("");
+    }catch(e){ /* 错误已在 runGenerate 里展示 */ }
+  };
+
+  const generateAllFromCurrent=async()=>{
+    if(!selected) return;
+    const jd=draft.step0;
+    if(!jd||!jd.trim()){ setError("请先在 Step 1 里填写 JD 原文"); return; }
+    try{
+      await genBreakdown(selected,jd);
+      await genPlan(selected);
+      await genJson(selected);
+      await genPatch(selected);
+    }catch(e){ /* 出错即停止，错误已展示 */ }
+  };
+
+  const uploadResume=async(lg,file)=>{
+    setError("");
+    const fd=new FormData(); fd.append("file",file);
+    try{
+      const res=await fetch(`${API}/api/resumes/${lg}`,{method:"POST",body:fd});
+      if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e.error||"上传失败"); }
+      await refreshResumes();
+    }catch(e){ setError(e.message); }
+  };
+
+  const anyBusy=Object.values(busy).some(Boolean);
+
+  return(
+    <div style={{minHeight:"100vh",background:C.cream}}>
+      <div style={{background:C.fir,padding:"16px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            <div style={{color:C.frost,fontSize:18,fontWeight:700,letterSpacing:0.5}}>简历定制工具</div>
+            <div style={{color:C.mist,fontSize:11}}>Resume Tailoring Workflow</div>
+          </div>
+          <a href="index.html" style={navPill} onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>📋 秋招追踪</a>
+          <a href="phd.html" style={navPill} onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>🎓 申博追踪</a>
+        </div>
+      </div>
+
+      {serverDown &&
+        <div style={{background:"#F5DCDC",color:"#7A3030",padding:"10px 24px",fontSize:13,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <span>⚠️ 连不上本地服务（http://127.0.0.1:5055）。</span>
+          <a href="resumeworkflow://start" style={{color:"#7A3030",textDecoration:"underline",fontWeight:600}}>点此启动本地服务</a>
+          <span>启动后刷新本页即可。</span>
+        </div>
+      }
+
+      <div style={{padding:24,maxWidth:1200,margin:"0 auto"}}>
+        {error &&
+          <div style={{background:"#F5DCDC",color:"#7A3030",padding:"10px 16px",borderRadius:8,marginBottom:16,fontSize:13,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>{error}</span>
+            <button onClick={()=>setError("")} style={{background:"transparent",border:"none",color:"#7A3030",cursor:"pointer",fontSize:13}}>✕</button>
+          </div>
+        }
+
+        <div className="card" style={{...card,marginBottom:20}}>
+          <div style={{fontWeight:700,color:C.fir,marginBottom:12}}>简历库</div>
+          <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
+            {["zh","en"].map(lg=>(
+              <div key={lg}>
+                <div style={lbl}>{lg==="zh"?"中文简历 (cv_zh.docx)":"英文简历 (cv_en.docx)"}</div>
+                <div style={{fontSize:12,color:resumes[lg]&&resumes[lg].exists?C.sage:"#7A3030",marginBottom:6}}>
+                  {resumes[lg]&&resumes[lg].exists?`已上传 · ${new Date(resumes[lg].mtime*1000).toLocaleString()}`:"未上传"}
+                </div>
+                <input type="file" accept=".docx" onChange={e=>{const f=e.target.files[0]; if(f) uploadResume(lg,f); e.target.value="";}} style={{fontSize:12}}/>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{display:"flex",gap:20,alignItems:"flex-start",flexWrap:"wrap"}}>
+          <div style={{width:280,flexShrink:0}}>
+            <div className="card" style={{...card,marginBottom:16}}>
+              <div style={{fontWeight:700,color:C.fir,marginBottom:12}}>新建定制任务</div>
+              <div style={{marginBottom:10}}>
+                <div style={lbl}>公司/岗位简称</div>
+                <input style={inp} value={newCompany} onChange={e=>setNewCompany(e.target.value)} placeholder="如 KPMG"/>
+              </div>
+              <div style={{marginBottom:10}}>
+                <div style={lbl}>JD 原文</div>
+                <ResizableTextarea value={newJd} onChange={e=>setNewJd(e.target.value)} placeholder="粘贴职位描述..." minHeight={100}/>
+              </div>
+              <button style={{...btnPrimary,width:"100%"}} disabled={busy.breakdown} onClick={createCompany}>
+                {busy.breakdown?"创建中...":"新建并生成 JD 拆解"}
+              </button>
+            </div>
+
+            <div className="card" style={card}>
+              <div style={{fontWeight:700,color:C.fir,marginBottom:12}}>历史任务</div>
+              {companies.length===0 && <div style={{fontSize:12,color:C.textLight}}>暂无记录</div>}
+              {companies.map(c=>(
+                <div key={c.company} onClick={()=>setSelected(c.company)}
+                  style={{padding:"8px 10px",borderRadius:8,cursor:"pointer",marginBottom:6,
+                    background:selected===c.company?C.frost:"transparent",
+                    border:`1px solid ${selected===c.company?C.reed:"transparent"}`}}>
+                  <div style={{fontSize:13,fontWeight:600,color:C.text}}>{c.company}</div>
+                  <div style={{fontSize:11,color:C.textLight,letterSpacing:2}}>
+                    {["step1","step2","step3"].map(k=>c.steps[k]?"●":"○").join(" ")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{flex:1,minWidth:320}}>
+            {!selected &&
+              <div className="card" style={{...card,color:C.textLight,fontSize:13}}>从左侧选择一个历史任务，或新建一个开始使用。</div>
+            }
+            {selected &&
+              <div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+                  <div style={{fontSize:18,fontWeight:700,color:C.fir}}>{selected}</div>
+                  <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                    <select style={{...inp,width:"auto"}} value={lang} onChange={e=>setLang(e.target.value)}>
+                      <option value="zh">中文简历</option>
+                      <option value="en">英文简历</option>
+                    </select>
+                    <button style={btnPrimary} disabled={anyBusy} onClick={generateAllFromCurrent}>
+                      一键生成全部四步
+                    </button>
+                  </div>
+                </div>
+
+                <StepPanel title="Step 1 · JD 拆解" content={draft.step1} placeholder="尚未生成"
+                  busy={busy.breakdown}
+                  onGenerate={()=>genBreakdown(selected,draft.step0)}
+                  onSave={v=>saveContent("step1",v)}
+                  extra={
+                    <div style={{marginBottom:10}}>
+                      <div style={lbl}>JD 原文（重新生成会使用这里的内容）</div>
+                      <ResizableTextarea value={draft.step0} onChange={e=>setDraft(d=>({...d,step0:e.target.value}))} minHeight={100}/>
+                    </div>
+                  }
+                />
+
+                <StepPanel title="Step 2 · 定制方案" content={draft.step2} placeholder="尚未生成（需先完成 Step 1）"
+                  busy={busy.plan} disabled={!draft.step1}
+                  onGenerate={()=>genPlan(selected)}
+                  onSave={v=>saveContent("step2",v)}
+                  hint="可以直接在下方修改方案内容，改完点“保存修改”（不会重新调用 AI）。保存后请单独点击 Step 3 / Step 4 的生成按钮继续；不要使用页面顶部的“一键生成全部四步”，那会连 Step 1、2 一起重新生成，覆盖掉你的修改。"
+                />
+
+                <StepPanel title="Step 3 · JSON 指令" content={draft.step3} placeholder="尚未生成（需先完成 Step 2）"
+                  busy={busy.json} disabled={!draft.step2}
+                  onGenerate={()=>genJson(selected)}
+                  onSave={v=>saveContent("step3",v)}
+                  mono
+                />
+
+                <div className="card" style={card}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
+                    <div style={{fontWeight:700,color:C.fir}}>Step 4 · 生成定制简历</div>
+                    <button style={btnPrimary} disabled={!draft.step3||busy.patch} onClick={()=>genPatch(selected)}>
+                      {busy.patch?"生成中...":"生成 docx"}
+                    </button>
+                  </div>
+                  {draft.docx&&draft.docx[lang] ? (
+                    <a href={`${API}/api/download/${encodeURIComponent(selected)}/${lang}`} style={{...btnGhost,textDecoration:"none",display:"inline-block"}}>
+                      ⬇ 下载定制简历（{lang==="zh"?"中文":"英文"}）
+                    </a>
+                  ) : <div style={{fontSize:12,color:C.textLight}}>尚未生成</div>}
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

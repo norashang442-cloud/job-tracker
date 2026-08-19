@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.pyc
+
+.DS_Store
+Thumbs.db
+
+# 简历定制工作流的真实个人数据（简历原件、真实 JD、生成产物）——不应进入公开仓库
+resume-workflow/input/
+resume-workflow/output/
+resume-workflow/example_plan.md

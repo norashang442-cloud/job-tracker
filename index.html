@@ -343,6 +343,15 @@ function JobForm({initial,companies,jobs,toApply,onSave,onCancel}){
               {parsing?"提取中…":"自动填写"}
             </button>
           </div>
+          {rawText.trim()&&(
+            <div style={{marginTop:8,textAlign:"right"}}>
+              <a href={`resume.html?${new URLSearchParams({company:form.company||"",jd:rawText}).toString()}`}
+                target="_blank" rel="noopener noreferrer"
+                style={{fontSize:12,color:C.sage,textDecoration:"none",border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 12px",display:"inline-block"}}>
+                🧾 用这段 JD 生成定制简历
+              </a>
+            </div>
+          )}
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -648,6 +657,15 @@ function ToApplyForm({initial,companies,jobs,toApply,onSave,onCancel}){
               {parsing?"提取中…":"自动填写"}
             </button>
           </div>
+          {rawText.trim()&&(
+            <div style={{marginTop:8,textAlign:"right"}}>
+              <a href={`resume.html?${new URLSearchParams({company:form.company||"",jd:rawText}).toString()}`}
+                target="_blank" rel="noopener noreferrer"
+                style={{fontSize:12,color:C.sage,textDecoration:"none",border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 12px",display:"inline-block"}}>
+                🧾 用这段 JD 生成定制简历
+              </a>
+            </div>
+          )}
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -983,6 +1001,9 @@ function App(){
           </div>
           <a href="phd.html" style={{color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"}}
             onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>🎓 申博追踪</a>
+          <a href="resumeworkflow://start" title="点击后系统会弹窗确认是否打开「Resume Workflow」，确认后会自动启动本地服务并打开简历定制页面"
+            style={{color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"}}
+            onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>📝 简历定制</a>
           <button onClick={toggleInbox} style={{background:"transparent",color:C.mist,border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
             📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""}
           </button>

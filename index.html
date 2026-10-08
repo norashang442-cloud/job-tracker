@@ -172,6 +172,30 @@ function findDuplicateWarning(companyName,currentId,jobs,toApply){
   return `⚠️ 已有${parts.join('、')}`;
 }
 
+const normName=s=>(s||"").trim().toLowerCase();
+function findCompanyByName(companies,name){
+  const n=normName(name);
+  return n?companies.find(c=>normName(c.company)===n):undefined;
+}
+
+function CompanyField({form,set,companies,jobs,toApply,addCompany,setAddCompany}){
+  const matched=findCompanyByName(companies,form.company);
+  const w=findDuplicateWarning(form.company,form.id,jobs||[],toApply||[]);
+  return(
+    <div>
+      <label style={lbl}>公司名称 *</label>
+      <input style={inp} list="followed-companies" value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/>
+      <datalist id="followed-companies">{companies.map(c=><option key={c.id} value={c.company}/>)}</datalist>
+      {w&&<div style={{fontSize:11,color:"#b07030",marginTop:4}}>{w}</div>}
+      {form.company.trim()&&(matched
+        ?<div style={{fontSize:11,color:C.sage,marginTop:4}}>🏢 已在关注公司中</div>
+        :<label style={{display:"flex",alignItems:"center",gap:6,marginTop:4,fontSize:11,color:C.textLight,cursor:"pointer"}}>
+          <input type="checkbox" checked={addCompany} onChange={e=>setAddCompany(e.target.checked)}/>同时加入关注公司
+        </label>)}
+    </div>
+  );
+}
+
 const URL_RE=/(https?:\/\/[^\s<>"'）】」』，。！？；：]+)/g;
 function linkifyText(text){
   if(!text) return text;
@@ -299,6 +323,7 @@ function MilestoneEditor({milestones,onChange,company,position}){
 
 function JobForm({initial,companies,jobs,toApply,onSave,onCancel}){
   const [form,setForm]=useState(initial||EMPTY);
+  const [addCompany,setAddCompany]=useState(!initial?.id);
   const [rawText,setRawText]=useState("");
   const [parsing,setParsing]=useState(false);
   const [msg,setMsg]=useState("");
@@ -343,38 +368,11 @@ function JobForm({initial,companies,jobs,toApply,onSave,onCancel}){
               {parsing?"提取中…":"自动填写"}
             </button>
           </div>
-          {rawText.trim()&&(
-            <div style={{marginTop:8,textAlign:"right"}}>
-              <a href={`resume.html?${new URLSearchParams({company:form.company||"",jd:rawText}).toString()}`}
-                target="_blank" rel="noopener noreferrer"
-                style={{fontSize:12,color:C.sage,textDecoration:"none",border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 12px",display:"inline-block"}}>
-                🧾 用这段 JD 生成定制简历
-              </a>
-            </div>
-          )}
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div>
-          <label style={lbl}>公司名称 *</label>
-          <input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/>
-          {(()=>{const w=findDuplicateWarning(form.company,form.id,jobs,toApply);return w&&<div style={{fontSize:11,color:"#b07030",marginTop:4}}>{w}</div>;})()}
-        </div>
+        <CompanyField form={form} set={set} companies={companies} jobs={jobs} toApply={toApply} addCompany={addCompany} setAddCompany={setAddCompany}/>
         <div><label style={lbl}>职位名称 *</label><input style={inp} value={form.position} onChange={e=>set("position",e.target.value)} placeholder="如：Graduate Engineer"/></div>
-        {companies&&companies.length>0&&(
-          <div style={{gridColumn:"1/-1"}}>
-            <label style={lbl}>关联公司（可选）</label>
-            <select style={inp} value={form.companyId??""} onChange={e=>{
-              const cid=e.target.value?Number(e.target.value):null;
-              set("companyId",cid);
-              const co=companies.find(c=>c.id===cid);
-              if(co) set("company",co.company);
-            }}>
-              <option value="">不关联</option>
-              {companies.map(c=><option key={c.id} value={c.id}>{c.company}</option>)}
-            </select>
-          </div>
-        )}
         <div><label style={lbl}>公司行业</label>
           <select style={inp} value={form.industry||""} onChange={e=>set("industry",e.target.value)}>
             <option value="">请选择</option>
@@ -406,7 +404,7 @@ function JobForm({initial,companies,jobs,toApply,onSave,onCancel}){
       </div>
       <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
         <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
-        <button onClick={()=>form.company&&form.position&&onSave(form)}
+        <button onClick={()=>form.company&&form.position&&onSave(form,addCompany)}
           style={{padding:"8px 22px",borderRadius:8,border:"none",background:C.fir,color:C.white,cursor:"pointer",fontSize:14,fontWeight:600}}>保存</button>
       </div>
     </div>
@@ -605,6 +603,7 @@ function CompanyForm({initial,onSave,onCancel}){
 
 function ToApplyForm({initial,companies,jobs,toApply,onSave,onCancel}){
   const [form,setForm]=useState(initial||EMPTY_TOAPPLY);
+  const [addCompany,setAddCompany]=useState(!initial?.id);
   const [rawText,setRawText]=useState("");
   const [parsing,setParsing]=useState(false);
   const [msg,setMsg]=useState("");
@@ -657,43 +656,16 @@ function ToApplyForm({initial,companies,jobs,toApply,onSave,onCancel}){
               {parsing?"提取中…":"自动填写"}
             </button>
           </div>
-          {rawText.trim()&&(
-            <div style={{marginTop:8,textAlign:"right"}}>
-              <a href={`resume.html?${new URLSearchParams({company:form.company||"",jd:rawText}).toString()}`}
-                target="_blank" rel="noopener noreferrer"
-                style={{fontSize:12,color:C.sage,textDecoration:"none",border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 12px",display:"inline-block"}}>
-                🧾 用这段 JD 生成定制简历
-              </a>
-            </div>
-          )}
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div>
-          <label style={lbl}>公司名称 *</label>
-          <input style={inp} value={form.company} onChange={e=>set("company",e.target.value)} placeholder="如：Geely / 吉利"/>
-          {(()=>{const w=findDuplicateWarning(form.company,form.id,jobs||[],(toApply||[]));return w&&<div style={{fontSize:11,color:"#b07030",marginTop:4}}>{w}</div>;})()}
-        </div>
+        <CompanyField form={form} set={set} companies={companies} jobs={jobs} toApply={toApply} addCompany={addCompany} setAddCompany={setAddCompany}/>
         <div><label style={lbl}>职位名称 *</label><input style={inp} value={form.position} onChange={e=>set("position",e.target.value)} placeholder="如：Graduate Engineer"/></div>
         <div><label style={lbl}>职位类型</label>
           <select style={inp} value={form.type||"全职"} onChange={e=>set("type",e.target.value)}>
             {TYPES.map(t=><option key={t}>{t}</option>)}
           </select>
         </div>
-        {companies&&companies.length>0&&(
-          <div style={{gridColumn:"1/-1"}}>
-            <label style={lbl}>关联公司（可选）</label>
-            <select style={inp} value={form.companyId??""} onChange={e=>{
-              const cid=e.target.value?Number(e.target.value):null;
-              set("companyId",cid);
-              const co=companies.find(c=>c.id===cid);
-              if(co) set("company",co.company);
-            }}>
-              <option value="">不关联</option>
-              {companies.map(c=><option key={c.id} value={c.id}>{c.company}</option>)}
-            </select>
-          </div>
-        )}
         <div style={{gridColumn:"1/-1"}}>
           <label style={lbl}>关注类型</label>
           <div style={{display:"flex",gap:8}}>
@@ -743,7 +715,7 @@ function ToApplyForm({initial,companies,jobs,toApply,onSave,onCancel}){
       </div>
       <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
         <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
-        <button onClick={()=>form.company&&form.position&&onSave(form.intent==="长期关注"?form:{...form,watchReason:""})}
+        <button onClick={()=>form.company&&form.position&&onSave(form.intent==="长期关注"?form:{...form,watchReason:""},addCompany)}
           style={{padding:"8px 22px",borderRadius:8,border:"none",background:C.fir,color:C.white,cursor:"pointer",fontSize:14,fontWeight:600}}>保存</button>
       </div>
     </div>
@@ -766,7 +738,7 @@ function App(){
   const [dragOverCardId,setDragOverCardId]=useState(null);
   const [manualExpand,setManualExpand]=useState({});
   const [reviewOpen,setReviewOpen]=useState(true);
-  const [trackedOpen,setTrackedOpen]=useState(false);
+  const [trackedOpen,setTrackedOpen]=useState(true);
   const [inboxItems,setInboxItems]=useState([]);
   const [inboxOpen,setInboxOpen]=useState(false);
   const [inboxLoading,setInboxLoading]=useState(false);
@@ -797,7 +769,22 @@ function App(){
   useEffect(()=>{try{localStorage.setItem("jt4_toApply",JSON.stringify(toApply))}catch{}},[toApply]);
   useEffect(()=>{try{localStorage.setItem("jt4_companies",JSON.stringify(companies))}catch{}},[companies]);
 
-  const save=f=>{
+  // Match the item's company name against followed companies; optionally create one if none matches.
+  const linkCompany=(item,addCompany,extra={})=>{
+    const name=item.company.trim();
+    const co=findCompanyByName(companies,name);
+    if(co) return {...item,companyId:co.id};
+    if(!addCompany) return {...item,companyId:null};
+    const id=Date.now()+1;
+    setCompanies(c=>[...c,{...EMPTY_COMPANY,...extra,company:name,id}]);
+    return {...item,companyId:id};
+  };
+  const companyIds=new Set(companies.map(c=>c.id));
+  // Legacy records may lack a valid companyId, so fall back to matching by name.
+  const belongsTo=(item,co)=>item.companyId===co.id||(!companyIds.has(item.companyId)&&normName(item.company)===normName(co.company));
+
+  const save=(f,addCompany)=>{
+    f=linkCompany(f,addCompany,{industry:f.industry||""});
     if(modal==="add") setJobs(j=>[...j,{...f,id:Date.now()}]);
     else setJobs(j=>j.map(x=>x.id===modal.id?{...modal,...f}:x));
     setModal(null);
@@ -844,11 +831,11 @@ function App(){
   };
 
   const companiesWithPositions=companies.map(co=>{
-    const linkedJobs=jobs.filter(j=>j.companyId===co.id).map(j=>{
+    const linkedJobs=jobs.filter(j=>belongsTo(j,co)).map(j=>{
       const st=STATUS.find(s=>s.key===j.status)||STATUS[0];
       return {id:`job-${j.id}`,position:j.position,tagLabel:st.label,tagColor:st.color,tagBg:st.bg};
     });
-    const linkedToApply=toApply.filter(t=>t.companyId===co.id).map(t=>({
+    const linkedToApply=toApply.filter(t=>belongsTo(t,co)).map(t=>({
       id:`ta-${t.id}`,position:t.position,tagLabel:t.intent,
       tagColor:t.intent==="长期关注"?C.textLight:C.white,
       tagBg:t.intent==="长期关注"?C.frost:C.sage,
@@ -866,7 +853,8 @@ function App(){
   const tabBtn=active=>({padding:"6px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,background:active?C.fir:"transparent",color:active?C.white:C.textLight,transition:"all 0.2s"});
   const selStyle={padding:"6px 12px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.text,fontSize:13,cursor:"pointer"};
 
-  const saveTA=item=>{
+  const saveTA=(item,addCompany)=>{
+    item=linkCompany(item,addCompany);
     if(taModal==="add"||!taModal.id) setToApply(a=>[...a,{...item,id:Date.now()}]);
     else setToApply(a=>a.map(x=>x.id===taModal.id?{...taModal,...item}:x));
     setTaModal(false);
@@ -880,7 +868,15 @@ function App(){
 
   const saveCo=item=>{
     if(cModal==="add"||!cModal.id) setCompanies(c=>[...c,{...item,id:Date.now()}]);
-    else setCompanies(c=>c.map(x=>x.id===cModal.id?{...cModal,...item}:x));
+    else{
+      setCompanies(c=>c.map(x=>x.id===cModal.id?{...cModal,...item}:x));
+      // Keep linked positions' company name in sync when the company is renamed.
+      if(item.company!==cModal.company){
+        const rename=x=>belongsTo(x,cModal)?{...x,company:item.company,companyId:cModal.id}:x;
+        setJobs(j=>j.map(rename));
+        setToApply(a=>a.map(rename));
+      }
+    }
     setCModal(false);
     if(convertingInboxId){ deleteInboxItem(convertingInboxId); setConvertingInboxId(null); }
   };
@@ -1001,15 +997,9 @@ function App(){
           </div>
           <a href="phd.html" style={{color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"}}
             onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>🎓 申博追踪</a>
-          <a href="resumeworkflow://start" title="点击后系统会弹窗确认是否打开「Resume Workflow」，确认后会自动启动本地服务并打开简历定制页面"
-            style={{color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"}}
-            onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>📝 简历定制</a>
           <button onClick={toggleInbox} style={{background:"transparent",color:C.mist,border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
             📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""}
           </button>
-          <a href={`https://claude.ai/new?q=${encodeURIComponent("帮我筛查这张秋招公司清单图片")}`} target="_blank" rel="noopener noreferrer"
-            style={{color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"}}
-            onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>🔍 筛查陌生公司</a>
         </div>
         <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4}}>
           <button style={mainTabBtn(mainTab==="companies")} onClick={()=>setMainTab("companies")}>
@@ -1049,7 +1039,7 @@ function App(){
               <div style={{textAlign:"center",padding:"60px 20px",color:C.mist}}>
                 <div style={{fontSize:36,marginBottom:12}}>🏢</div>
                 <div style={{fontSize:15,fontWeight:600,marginBottom:6}}>暂无关注公司</div>
-                <div style={{fontSize:13}}>看到心仪公司的秋招公告，但还没确定具体岗位时，先在这里记一笔</div>
+                <div style={{fontSize:13}}>可以在这里直接添加，也可以在添加岗位时勾选「同时加入关注公司」</div>
               </div>
             )}
             {companies.length>0&&[

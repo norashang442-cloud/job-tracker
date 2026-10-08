@@ -48,6 +48,7 @@ const C={
 const PROF_STATUS=[
   {key:"pending", label:"待发送", color:"#6B6B6B",bg:"#ECECEC"},
   {key:"sent",    label:"已发送", color:"#5C7A60",bg:"#E8F2E8"},
+  {key:"followed",label:"已跟进", color:"#5E5A7A",bg:"#E8E6F2"},
   {key:"replied", label:"已回复", color:"#7A6E2F",bg:"#F5F2DC"},
   {key:"talked",  label:"已约谈", color:"#2F5A7A",bg:"#DCF0F5"},
   {key:"success", label:"成功",   color:"#2F6640",bg:"#D4EDD8"},
@@ -635,9 +636,6 @@ function App(){
           </div>
           <a href="index.html" style={{color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"}}
             onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>📋 秋招追踪</a>
-          <a href="resumeworkflow://start" title="点击后系统会弹窗确认是否打开「Resume Workflow」，确认后会自动启动本地服务并打开简历定制页面"
-            style={{color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"}}
-            onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>📝 简历定制</a>
           <button onClick={toggleInbox} style={{background:"transparent",color:C.mist,border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
             📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""}
           </button>

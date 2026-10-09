@@ -160,6 +160,129 @@ function downloadICS(filename,content){
   URL.revokeObjectURL(a.href);
 }
 
+// ---------- 提醒（每日邮件 + 日历订阅），与 phd.html 保持一致 ----------
+const pad2=n=>String(n).padStart(2,"0");
+const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;};
+const addDays=(s,n)=>{const d=new Date(s+"T00:00:00Z");d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
+const diffDays=(a,b)=>Math.round((Date.parse(b+"T00:00:00Z")-Date.parse(a+"T00:00:00Z"))/86400000);
+const isDue=(e,today)=>e.remindOn.includes(today)||(e.repeatUntilDone&&today>=e.date);
+const dueLabel=(date,today)=>{const d=diffDays(today,date);return d===0?"今天":d===1?"明天":d>1?`还有 ${d} 天`:`已逾期 ${-d} 天`;};
+const getKey=()=>{try{return localStorage.getItem("jt4_inbox_key")||""}catch{return ""}};
+
+// Push this page's reminders to the cloud (debounced) so the daily email / calendar feed can see them.
+function useReminderSync(target,events){
+  const [sync,setSync]=useState({state:"idle"});
+  const json=JSON.stringify(events);
+  const run=async()=>{
+    const key=getKey();
+    if(!key){setSync({state:"nokey"});return;}
+    setSync(s=>({...s,state:"syncing"}));
+    try{
+      const res=await fetch("/api/reminders-sync",{method:"POST",headers:{"Content-Type":"application/json","X-Inbox-Key":key},body:JSON.stringify({target,events:JSON.parse(json)})});
+      if(res.status===401){setSync({state:"badkey"});return;}
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.error);
+      setSync({state:"ok",count:data.count});
+    }catch{setSync({state:"error"});}
+  };
+  useEffect(()=>{const t=setTimeout(run,1500);return()=>clearTimeout(t);},[json]);
+  return [sync,run];
+}
+
+function DueBanner({events,onOpen}){
+  const today=todayStr();
+  const due=events.filter(e=>isDue(e,today)).sort((a,b)=>a.date.localeCompare(b.date));
+  if(!due.length) return null;
+  return(
+    <div onClick={onOpen} style={{background:"#FFF6E0",border:"1px solid #F0D9A0",borderRadius:12,padding:"10px 14px",marginBottom:16,cursor:"pointer"}}>
+      <div style={{fontWeight:700,fontSize:13,color:"#7A5A1F",marginBottom:4}}>🔔 今天要处理 {due.length} 件事</div>
+      {due.slice(0,6).map(e=>(
+        <div key={e.id} style={{fontSize:12,color:C.text,lineHeight:1.7}}>
+          <span style={{color:diffDays(today,e.date)<=0?"#c0392b":C.textLight,fontWeight:700}}>{dueLabel(e.date,today)}</span> · {e.title}{e.time?` ${e.time}`:""}{e.detail?<span style={{color:C.textLight}}> · {e.detail}</span>:null}
+        </div>
+      ))}
+      {due.length>6&&<div style={{fontSize:12,color:C.textLight}}>…还有 {due.length-6} 件</div>}
+    </div>
+  );
+}
+
+function ReminderPanel({events,sync,resync}){
+  const today=todayStr();
+  const [msg,setMsg]=useState("");
+  const [copied,setCopied]=useState(false);
+  const key=getKey();
+  const upcoming=events.filter(e=>isDue(e,today)||(e.date>=today&&diffDays(today,e.date)<=14)).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  const calUrl=`webcal://${location.host}/api/calendar?key=${encodeURIComponent(key)}`;
+  const setKey=()=>{const k=prompt("请输入收件箱密钥（部署时在 Vercel 环境变量 INBOX_SECRET 里设置的值）");if(k){localStorage.setItem("jt4_inbox_key",k);resync();}};
+  const sendTest=async()=>{
+    setMsg("发送中…");
+    try{
+      await resync();
+      const res=await fetch("/api/remind?test=1",{headers:{"X-Inbox-Key":key}});
+      const d=await res.json();
+      setMsg(res.ok?`✅ 已发送（含 ${d.due} 件到期事项），去邮箱看看`:`⚠️ ${d.error||"发送失败"}`);
+    }catch{setMsg("⚠️ 发送失败，检查网络");}
+  };
+  const copy=()=>navigator.clipboard?.writeText(calUrl).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1500);});
+  const syncText={idle:"",syncing:"同步中…",ok:`✅ 已同步到云端（本页 ${sync.count} 条提醒）`,nokey:"⚠️ 还没设置密钥，提醒不会同步到云端",badkey:"⚠️ 密钥错误，请重设",error:"⚠️ 同步失败，检查网络"}[sync.state];
+  const smallBtn={padding:"5px 12px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:12,cursor:"pointer",textDecoration:"none",whiteSpace:"nowrap"};
+  const section={fontSize:13,fontWeight:700,color:C.moss,margin:"18px 0 8px"};
+  return(
+    <div>
+      <h3 style={{color:C.fir,fontSize:17,marginBottom:10}}>🔔 提醒</h3>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",fontSize:12,color:sync.state==="ok"?C.sage:C.textLight}}>
+        <span style={{flex:1}}>{syncText}</span>
+        <button onClick={setKey} style={smallBtn}>{key?"重设密钥":"设置密钥"}</button>
+        {key&&<button onClick={resync} style={smallBtn}>立即同步</button>}
+      </div>
+
+      <div style={section}>近两周（本页）</div>
+      {upcoming.length===0&&<div style={{fontSize:12,color:C.mist}}>未来两周没有提醒</div>}
+      {upcoming.map(e=>(
+        <div key={e.id} style={{display:"flex",gap:10,fontSize:12,padding:"5px 0",borderBottom:`1px solid ${C.frost}`}}>
+          <span style={{width:74,flexShrink:0,fontWeight:700,color:isDue(e,today)?"#c0392b":C.textLight}}>{dueLabel(e.date,today)}</span>
+          <span style={{color:C.text,wordBreak:"break-word"}}>{e.title}{e.time?` ${e.time}`:""}{e.detail?<span style={{color:C.textLight}}> · {e.detail}</span>:null}</span>
+        </div>
+      ))}
+
+      {key&&<>
+        <div style={section}>📧 每日邮件</div>
+        <div style={{fontSize:12,color:C.textLight,lineHeight:1.6,marginBottom:8}}>每天早上 8 点（北京时间）检查一次，有到期事项才发信。套磁跟进会每天重复提醒，直到你改了状态。</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <a href={`/api/remind?dry=1&key=${encodeURIComponent(key)}`} target="_blank" rel="noopener noreferrer" style={smallBtn}>预览今天的邮件</a>
+          <button onClick={sendTest} style={{...smallBtn,background:C.sage,color:C.white,border:"none"}}>发一封测试邮件</button>
+          {msg&&<span style={{fontSize:12,color:msg.startsWith("✅")?C.sage:"#b05050"}}>{msg}</span>}
+        </div>
+
+        <div style={section}>📅 日历订阅（秋招 + 申博）</div>
+        <div style={{fontSize:12,color:C.textLight,lineHeight:1.6,marginBottom:8}}>最方便的方法：在 iPhone 上打开任意一封提醒邮件，点底部的「订阅提醒日历」。也可以复制下面的地址，在 iPhone「日历」设置里选「添加已订阅的日历」。订阅时记得<b>关闭「移除提醒」</b>，否则日历不会响。</div>
+        <div style={{display:"flex",gap:8}}>
+          <input readOnly value={calUrl} onFocus={e=>e.target.select()} style={{...inp,fontSize:11,flex:1}}/>
+          <button onClick={copy} style={smallBtn}>{copied?"已复制":"复制"}</button>
+        </div>
+      </>}
+    </div>
+  );
+}
+
+// 笔试/面试等环节：前一天 + 当天提醒；计划投递的岗位截止：前 7 天、前 1 天、当天提醒。
+function buildJobEvents(jobs,toApply,today){
+  const ev=[];
+  const cutoff=addDays(today,-30);
+  jobs.forEach(j=>{
+    if(j.status==="rejected") return;
+    (j.milestones||[]).forEach(m=>{
+      if(!m.date||m.date<cutoff) return;
+      ev.push({id:`job-${j.id}-${m.id}`,kind:"milestone",title:[j.company,j.position,m.stage].filter(Boolean).join(" · "),detail:m.note||"",date:m.date,time:m.time||"",url:j.url||"",remindOn:[addDays(m.date,-1),m.date]});
+    });
+  });
+  toApply.forEach(t=>{
+    if(t.intent!=="计划投递"||t.rolling||!t.deadline||t.deadline<cutoff) return;
+    ev.push({id:`ta-${t.id}`,kind:"deadline",title:`${t.company} · ${t.position} 投递截止`,detail:"",date:t.deadline,time:"",url:t.url||"",remindOn:[-7,-1,0].map(n=>addDays(t.deadline,n))});
+  });
+  return ev;
+}
+
 function findDuplicateWarning(companyName,currentId,jobs,toApply){
   const name=(companyName||"").trim().toLowerCase();
   if(!name) return "";
@@ -769,6 +892,11 @@ function App(){
   useEffect(()=>{try{localStorage.setItem("jt4_toApply",JSON.stringify(toApply))}catch{}},[toApply]);
   useEffect(()=>{try{localStorage.setItem("jt4_companies",JSON.stringify(companies))}catch{}},[companies]);
 
+  const [reminderOpen,setReminderOpen]=useState(false);
+  const reminderEvents=buildJobEvents(jobs,toApply,todayStr());
+  const [reminderSync,resyncReminders]=useReminderSync("job",reminderEvents);
+  const dueCount=reminderEvents.filter(e=>isDue(e,todayStr())).length;
+
   // Match the item's company name against followed companies; optionally create one if none matches.
   const linkCompany=(item,addCompany,extra={})=>{
     const name=item.company.trim();
@@ -1000,6 +1128,9 @@ function App(){
           <button onClick={toggleInbox} style={{background:"transparent",color:C.mist,border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
             📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""}
           </button>
+          <button onClick={()=>setReminderOpen(true)} style={{background:dueCount?"#C0392B":"transparent",color:dueCount?C.white:C.mist,border:`1px solid ${dueCount?"#C0392B":C.reed}`,borderRadius:20,padding:"6px 14px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
+            🔔 提醒{dueCount>0?` (${dueCount})`:""}
+          </button>
         </div>
         <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4}}>
           <button style={mainTabBtn(mainTab==="companies")} onClick={()=>setMainTab("companies")}>
@@ -1032,6 +1163,7 @@ function App(){
       </div>
 
       <div style={{maxWidth:1120,margin:"0 auto",padding:"20px 14px"}}>
+        <DueBanner events={reminderEvents} onOpen={()=>setReminderOpen(true)}/>
 
         {mainTab==="companies"&&(
           <div className="tab-content">
@@ -1233,6 +1365,9 @@ function App(){
       </Modal>
       <Modal open={!!cModal} onClose={closeCModal}>
         <CompanyForm initial={cModal==="add"?null:cModal} onSave={saveCo} onCancel={closeCModal}/>
+      </Modal>
+      <Modal open={reminderOpen} onClose={()=>setReminderOpen(false)}>
+        <ReminderPanel events={reminderEvents} sync={reminderSync} resync={resyncReminders}/>
       </Modal>
       <Modal open={inboxOpen} onClose={()=>setInboxOpen(false)}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>

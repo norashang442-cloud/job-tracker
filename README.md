@@ -56,6 +56,33 @@
 
 数据存储在 `localStorage` 的 `phd_professors` / `phd_applications` / `phd_research_tags`（研究方向标签池），与秋招追踪器的存储完全独立，互不影响。目前还没有做研究计划模板库（相似方向导师共用的研究计划模板管理），后续视需要再加。
 
+## 🔔 提醒：每日邮件 + 日历订阅
+
+解决"忘了 follow up 套磁信""记错笔试时间"这类问题。两个页面顶部都有「🔔 提醒」按钮（有到期事项时变红并显示数量），页面内容最上方也会出现当天的提醒条。
+
+**会提醒什么**
+
+| 来源 | 什么时候提醒 |
+|---|---|
+| 套磁记录，状态「已发送」 | 发送日期 + 5 天提醒第一次跟进 |
+| 套磁记录，状态「已跟进」 | 最近一次跟进日期 + 2 天提醒再次跟进 |
+| 投递追踪的流程环节（笔试、面试等） | 前一天 + 当天（已拒绝的投递不提醒） |
+| 待投岗位（计划投递）、网申项目（材料准备中）的截止日期 | 前 7 天、前 1 天、当天 |
+
+套磁跟进的提醒到期后**每天重复**，直到状态变化（点卡片上的「✓ 已跟进」会把状态改成已跟进、记下今天的日期并写一条沟通记录，然后开始下一轮 2 天的计时）。间隔天数是 `phd.html` 里的 `FOLLOWUP_FIRST_DAYS` / `FOLLOWUP_AGAIN_DAYS` 两个常量。套磁表单里状态改成「已发送 / 已跟进」时会自动把对应日期填成今天，可以手动改；没填发送日期的记录不会提醒，卡片上会提示。
+
+**怎么做到的**：数据仍然只在本机 `localStorage`，但每次改动后页面会把算好的"提醒条目"（标题、日期、提醒日，不含其余字段）同步到 Vercel KV（`reminders_job` / `reminders_phd`，接口 `api/reminders-sync.js`，用收件箱同一把密钥）。没设置密钥就不同步——所以通过分享链接访问的人不受影响。
+
+- **`api/remind.js`**：Vercel Cron 每天 UTC 0 点（北京时间 8 点）调用一次（`vercel.json`），有到期事项就通过 [Resend](https://resend.com) 发一封汇总邮件，没有就不发。也可以手动调用测试：`/api/remind?key=密钥` 立即检查并发信；加 `&dry=1` 只在网页上预览不发信；加 `&date=2026-10-15` 模拟某一天；加 `&test=1` 即使没有到期事项也发一封。提醒面板里有「预览今天的邮件」「发一封测试邮件」两个按钮。
+- **`api/calendar.js`**：日历订阅地址 `webcal://你的域名/api/calendar?key=密钥`，秋招和申博的提醒都在里面，带闹钟。iPhone 上点提醒邮件底部的「订阅提醒日历」即可订阅；订阅时要**关闭「移除提醒」**，否则不会响。
+
+**需要额外配置的环境变量**
+
+- `RESEND_API_KEY`：在 Resend 注册后创建。没有验证自己的域名时，只能用默认发件人 `onboarding@resend.dev` 发给**注册 Resend 用的那个邮箱**，所以注册时就用你想收提醒的邮箱。
+- `REMIND_EMAIL_TO`：收提醒的邮箱（多个用逗号分隔）。
+- `CRON_SECRET`：随便设一串字符串，Vercel 定时任务调用时会自动带上，防止别人触发发信。
+- 可选：`REMIND_EMAIL_FROM`（验证域名后自定义发件人）、`REMIND_TZ`（判断"今天"用的时区，默认 `Asia/Shanghai`；改时区的话 `vercel.json` 里的发送时间也要跟着改）、`SITE_URL`（邮件里链接用的站点地址，默认取请求域名）。
+
 ## `resume.html` · 简历定制工作流
 
 > 目前 `index.html` / `phd.html` 里已经不再放这个工具的入口，代码保留在仓库里，需要时双击根目录的 `start-resume-tool.bat` 打开。
@@ -72,7 +99,7 @@
 
 - `index.html` / `phd.html` 是纯静态单文件：React 18 + Babel Standalone，均通过 CDN 引入，无需构建步骤，直接用浏览器打开即可运行，共享同一套视觉样式（配色、卡片、弹窗动效）。两个页面顶部各有一个跳转链接互相导航，但不共享任何数据。
 - `capture.html` 是纯 vanilla HTML/JS，不引入任何框架，专门为手机端弱网/快速打开优化。
-- 部署环境需要三个环境变量：`DEEPSEEK_API_KEY`（AI 提取）、`KV_REST_API_URL` + `KV_REST_API_TOKEN`（收件箱存储，随 Vercel KV 关联自动生成）、`INBOX_SECRET`（收件箱访问密钥，自己设定）。
+- 部署环境需要三个环境变量：`DEEPSEEK_API_KEY`（AI 提取）、`KV_REST_API_URL` + `KV_REST_API_TOKEN`（收件箱存储，随 Vercel KV 关联自动生成）、`INBOX_SECRET`（收件箱访问密钥，自己设定）。提醒功能另需 `RESEND_API_KEY` / `REMIND_EMAIL_TO` / `CRON_SECRET`，见上方「提醒」一节。
 
 ## 使用
 

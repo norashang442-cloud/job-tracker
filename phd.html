@@ -501,6 +501,7 @@ function App(){
   const [aModal,setAModal]=useState(null);
   const [pFilter,setPFilter]=useState("all");
   const [aFilter,setAFilter]=useState("all");
+  const [view,setView]=useState("卡片");
   const [inboxItems,setInboxItems]=useState([]);
   const [inboxOpen,setInboxOpen]=useState(false);
   const [inboxLoading,setInboxLoading]=useState(false);
@@ -622,6 +623,22 @@ function App(){
 
   const mainTabBtn=active=>({padding:"8px 20px",borderRadius:20,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,background:active?C.white:C.fir,color:active?C.fir:C.mist,transition:"all 0.2s",boxShadow:active?"0 2px 8px rgba(47,69,56,0.15)":"none"});
   const selStyle={padding:"6px 12px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.text,fontSize:13,cursor:"pointer"};
+  const tabBtn=active=>({padding:"6px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,background:active?C.fir:"transparent",color:active?C.white:C.textLight,transition:"all 0.2s"});
+  const viewToggle=(
+    <div style={{display:"flex",gap:3,background:C.frost,borderRadius:24,padding:3}}>
+      {["卡片","列表"].map(v=><button key={v} style={tabBtn(view===v)} onClick={()=>setView(v)}>{v}</button>)}
+    </div>
+  );
+  const thStyle={padding:"11px 12px",textAlign:"left",fontWeight:600,fontSize:12,whiteSpace:"nowrap"};
+  const td={padding:"9px 12px"};
+  const tableWrap={background:C.white,borderRadius:14,border:`1px solid ${C.border}`,overflow:"auto",boxShadow:`0 2px 12px ${C.shadow}`};
+  const rowBtns=(onEdit,onDel)=>(
+    <div style={{display:"flex",gap:5}}>
+      <button onClick={onEdit} style={{padding:"3px 9px",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>编辑</button>
+      <button onClick={onDel} style={{padding:"3px 9px",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>删除</button>
+    </div>
+  );
+  const today=new Date(); today.setHours(0,0,0,0);
 
   const filteredProfs=professors.filter(p=>pFilter==="all"||p.status===pFilter);
   const filteredApps=applications.filter(a=>aFilter==="all"||a.status===aFilter);
@@ -668,19 +685,61 @@ function App(){
               </div>
             )}
             {professors.length>0&&(
-              <div style={{marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+                {viewToggle}
                 <select style={selStyle} value={pFilter} onChange={e=>setPFilter(e.target.value)}>
                   <option value="all">全部状态</option>
                   {PROF_STATUS.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
               </div>
             )}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
-              {filteredProfs.map(prof=>{
-                const linkedApps=applications.filter(a=>(prof.applicationIds||[]).includes(a.id));
-                return <ProfessorCard key={prof.id} prof={prof} linkedApps={linkedApps} onEdit={()=>setPModal(prof)} onDel={()=>delProf(prof.id)}/>;
-              })}
-            </div>
+            {view==="卡片"&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+                {filteredProfs.map(prof=>{
+                  const linkedApps=applications.filter(a=>(prof.applicationIds||[]).includes(a.id));
+                  return <ProfessorCard key={prof.id} prof={prof} linkedApps={linkedApps} onEdit={()=>setPModal(prof)} onDel={()=>delProf(prof.id)}/>;
+                })}
+              </div>
+            )}
+            {view==="列表"&&professors.length>0&&(
+              <div style={tableWrap}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:760}}>
+                  <thead>
+                    <tr style={{background:C.fir,color:C.frost}}>
+                      {["导师","院校","研究方向","状态","最新沟通","关联项目","备注","操作"].map(h=><th key={h} style={thStyle}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredProfs.length===0&&<tr><td colSpan={8} style={{textAlign:"center",padding:32,color:C.mist}}>暂无符合条件的记录</td></tr>}
+                    {filteredProfs.map((prof,i)=>{
+                      const linkedApps=applications.filter(a=>(prof.applicationIds||[]).includes(a.id));
+                      const cs=prof.contacts||[];
+                      const latest=cs.length>0?cs[cs.length-1]:null;
+                      return(
+                        <tr key={prof.id} style={{background:i%2===0?C.cream:C.white,borderBottom:`1px solid ${C.border}`}}>
+                          <td style={{...td,fontWeight:700,color:C.fir,maxWidth:130,wordBreak:"break-word"}}>
+                            {prof.url?<a href={prof.url} title={prof.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir}}>{prof.name} ↗</a>:prof.name}
+                          </td>
+                          <td style={{...td,maxWidth:150,wordBreak:"break-word"}}>{prof.institution}</td>
+                          <td style={{...td,maxWidth:180}}>
+                            {(prof.researchAreas||[]).length>0
+                              ?<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{prof.researchAreas.map(tag=><span key={tag} style={{background:C.frost,color:C.moss,borderRadius:6,padding:"1px 7px",fontSize:11,fontWeight:600}}>{tag}</span>)}</div>
+                              :<span style={{color:C.mist,fontSize:12}}>—</span>}
+                          </td>
+                          <td style={{...td,whiteSpace:"nowrap"}}><StatusTag statusList={PROF_STATUS} s={prof.status}/></td>
+                          <td style={{...td,maxWidth:200}}>
+                            {latest?<span style={{fontSize:12}}><span style={{color:C.mist}}>{latest.date}</span> <span style={{color:C.text}}>{latest.note}</span></span>:<span style={{color:C.mist,fontSize:12}}>—</span>}
+                          </td>
+                          <td style={{...td,color:C.textLight,fontSize:12,maxWidth:160,wordBreak:"break-word"}}>{linkedApps.length?linkedApps.map(a=>`${a.school}·${a.program}`).join('，'):"—"}</td>
+                          <td style={{...td,color:C.textLight,fontStyle:"italic",maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={prof.note||""}>{prof.note||"—"}</td>
+                          <td style={{...td,whiteSpace:"nowrap"}}>{rowBtns(()=>setPModal(prof),()=>delProf(prof.id))}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -694,19 +753,62 @@ function App(){
               </div>
             )}
             {applications.length>0&&(
-              <div style={{marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+                {viewToggle}
                 <select style={selStyle} value={aFilter} onChange={e=>setAFilter(e.target.value)}>
                   <option value="all">全部状态</option>
                   {APP_STATUS.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
               </div>
             )}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
-              {filteredApps.map(app=>{
-                const linkedProfs=professors.filter(p=>(p.applicationIds||[]).includes(app.id));
-                return <ApplicationCard key={app.id} app={app} linkedProfs={linkedProfs} onEdit={()=>setAModal(app)} onDel={()=>delApp(app.id)}/>;
-              })}
-            </div>
+            {view==="卡片"&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+                {filteredApps.map(app=>{
+                  const linkedProfs=professors.filter(p=>(p.applicationIds||[]).includes(app.id));
+                  return <ApplicationCard key={app.id} app={app} linkedProfs={linkedProfs} onEdit={()=>setAModal(app)} onDel={()=>delApp(app.id)}/>;
+                })}
+              </div>
+            )}
+            {view==="列表"&&applications.length>0&&(
+              <div style={tableWrap}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:760}}>
+                  <thead>
+                    <tr style={{background:C.fir,color:C.frost}}>
+                      {["学校","项目/院系","批次","状态","截止日期","关联导师","备注","操作"].map(h=><th key={h} style={thStyle}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredApps.length===0&&<tr><td colSpan={8} style={{textAlign:"center",padding:32,color:C.mist}}>暂无符合条件的记录</td></tr>}
+                    {filteredApps.map((app,i)=>{
+                      const linkedProfs=professors.filter(p=>(p.applicationIds||[]).includes(app.id));
+                      const daysLeft=app.deadline?Math.ceil((new Date(app.deadline)-today)/(1000*60*60*24)):null;
+                      const urgent=daysLeft!==null&&daysLeft<=7&&daysLeft>=0;
+                      const expired=daysLeft!==null&&daysLeft<0;
+                      return(
+                        <tr key={app.id} style={{background:i%2===0?C.cream:C.white,borderBottom:`1px solid ${C.border}`}}>
+                          <td style={{...td,fontWeight:700,color:C.fir,maxWidth:150,wordBreak:"break-word"}}>
+                            {app.url?<a href={app.url} title={app.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir}}>{app.school} ↗</a>:app.school}
+                          </td>
+                          <td style={{...td,maxWidth:170,wordBreak:"break-word"}}>{app.program}</td>
+                          <td style={{...td,color:C.textLight,whiteSpace:"nowrap"}}>{app.cycle||"—"}</td>
+                          <td style={{...td,whiteSpace:"nowrap"}}><StatusTag statusList={APP_STATUS} s={app.status}/></td>
+                          <td style={{...td,whiteSpace:"nowrap",fontSize:12}}>
+                            {app.rolling
+                              ?<span style={{color:C.textLight}}>🔄 滚动招生</span>
+                              :app.deadline
+                                ?<span style={{color:urgent?"#e05050":expired?"#aaa":C.textLight,fontWeight:urgent?700:400}}>{app.deadline}{urgent&&" ❗"}{expired&&" (已过期)"}</span>
+                                :<span style={{color:C.mist}}>—</span>}
+                          </td>
+                          <td style={{...td,color:C.textLight,fontSize:12,maxWidth:150,wordBreak:"break-word"}}>{linkedProfs.length?linkedProfs.map(p=>p.name).join('，'):"—"}</td>
+                          <td style={{...td,color:C.textLight,fontStyle:"italic",maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={app.note||""}>{app.note||"—"}</td>
+                          <td style={{...td,whiteSpace:"nowrap"}}>{rowBtns(()=>setAModal(app),()=>delApp(app.id))}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

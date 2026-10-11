@@ -642,6 +642,26 @@ function ApplicationCard({app,linkedProfs,onEdit,onDel}){
   );
 }
 
+// 列表视图的研究方向：默认只显示前几个，点 +N 展开 / 收起
+function ResearchTagsCell({tags,limit=3}){
+  const [open,setOpen]=useState(false);
+  if(!tags.length) return <span style={{color:C.mist,fontSize:12}}>—</span>;
+  const shown=open?tags:tags.slice(0,limit);
+  const hidden=tags.length-limit;
+  const chip={borderRadius:6,padding:"1px 6px",fontSize:11,fontWeight:600,lineHeight:"18px",whiteSpace:"nowrap"};
+  return(
+    <div style={{display:"flex",flexWrap:"wrap",gap:3}} title={open?"":tags.join(" · ")}>
+      {shown.map(tag=><span key={tag} style={{...chip,background:C.frost,color:C.moss}}>{tag}</span>)}
+      {hidden>0&&(
+        <button type="button" onClick={()=>setOpen(o=>!o)}
+          style={{...chip,background:"transparent",color:C.moss,border:`1px dashed ${C.moss}`,cursor:"pointer"}}>
+          {open?"收起":`+${hidden}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function App(){
   const [professors,setProfessors]=useState(()=>{try{return JSON.parse(localStorage.getItem("phd_professors")||"[]").map(migrateProfessor)}catch{return []}});
   const [applications,setApplications]=useState(()=>{try{return JSON.parse(localStorage.getItem("phd_applications")||"[]").map(migrateApplication)}catch{return []}});
@@ -898,10 +918,8 @@ function App(){
                             {prof.url?<a href={prof.url} title={prof.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir}}>{prof.name} ↗</a>:prof.name}
                           </td>
                           <td style={{...td,maxWidth:150,wordBreak:"break-word"}}>{prof.institution}</td>
-                          <td style={{...td,maxWidth:180}}>
-                            {(prof.researchAreas||[]).length>0
-                              ?<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{prof.researchAreas.map(tag=><span key={tag} style={{background:C.frost,color:C.moss,borderRadius:6,padding:"1px 7px",fontSize:11,fontWeight:600}}>{tag}</span>)}</div>
-                              :<span style={{color:C.mist,fontSize:12}}>—</span>}
+                          <td style={{...td,width:240,maxWidth:240}}>
+                            <ResearchTagsCell tags={prof.researchAreas||[]}/>
                           </td>
                           <td style={{...td,minWidth:150}}><StatusTag statusList={PROF_STATUS} s={prof.status}/><FollowupHint prof={prof} onMarkFollowed={()=>markFollowed(prof)}/></td>
                           <td style={{...td,maxWidth:200}}>

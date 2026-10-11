@@ -662,6 +662,40 @@ function ResearchTagsCell({tags,limit=3}){
   );
 }
 
+// Bulk-edit bar for list view: only fields given a value are changed; blank means "leave as is".
+function BatchBar({count,fields,onApply,onDelete,onClear}){
+  const [vals,setVals]=useState({});
+  const patch=Object.fromEntries(Object.entries(vals).filter(([,v])=>v!==""));
+  const n=Object.keys(patch).length;
+  const ctl={padding:"5px 8px",borderRadius:7,border:`1px solid ${C.border}`,fontSize:12,background:C.white,color:C.text};
+  const apply=()=>{
+    if(!n) return;
+    const desc=fields.filter(f=>f.key in patch).map(f=>`${f.label}→${f.type==="select"?f.options.find(o=>o.key===patch[f.key])?.label:patch[f.key]}`).join("，");
+    if(!confirm(`将对 ${count} 条记录修改：${desc}，确认？`)) return;
+    onApply(patch); setVals({});
+  };
+  return(
+    <div style={{position:"sticky",top:8,zIndex:5,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:C.frost,border:`1.5px solid ${C.sage}`,borderRadius:12,padding:"10px 14px",marginBottom:12,boxShadow:`0 4px 14px ${C.shadow}`}}>
+      <span style={{fontSize:13,fontWeight:700,color:C.fir}}>已选 {count} 条</span>
+      {fields.map(f=>(
+        <label key={f.key} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,color:C.textLight}}>
+          {f.label}
+          {f.type==="select"
+            ?<select style={ctl} value={vals[f.key]||""} onChange={e=>setVals(v=>({...v,[f.key]:e.target.value}))}>
+              <option value="">不修改</option>
+              {f.options.map(o=><option key={o.key} value={o.key}>{o.label}</option>)}
+            </select>
+            :<input type={f.type} style={{...ctl,width:f.type==="date"?140:110}} value={vals[f.key]||""} placeholder="不修改" onChange={e=>setVals(v=>({...v,[f.key]:e.target.value}))}/>}
+        </label>
+      ))}
+      <button onClick={apply} disabled={!n} style={{padding:"6px 14px",borderRadius:8,border:"none",background:n?C.fir:C.mist,color:C.white,fontSize:12,fontWeight:600,cursor:n?"pointer":"not-allowed"}}>应用</button>
+      <span style={{flex:1}}/>
+      <button onClick={onDelete} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:12,cursor:"pointer"}}>删除所选</button>
+      <button onClick={onClear} style={{background:"none",border:"none",color:C.textLight,fontSize:12,cursor:"pointer",textDecoration:"underline"}}>取消选择</button>
+    </div>
+  );
+}
+
 function App(){
   const [professors,setProfessors]=useState(()=>{try{return JSON.parse(localStorage.getItem("phd_professors")||"[]").map(migrateProfessor)}catch{return []}});
   const [applications,setApplications]=useState(()=>{try{return JSON.parse(localStorage.getItem("phd_applications")||"[]").map(migrateApplication)}catch{return []}});
@@ -709,6 +743,43 @@ function App(){
   const markFollowed=prof=>{
     const t=todayStr();
     setProfessors(ps=>ps.map(p=>p.id===prof.id?{...p,status:"followed",followedDate:t,contacts:[...(p.contacts||[]),{id:Date.now(),date:t,note:"发送跟进邮件"}]}:p));
+  };
+
+  // 列表视图的勾选（切换标签页或视图时清空）
+  const [sel,setSel]=useState([]);
+  useEffect(()=>setSel([]),[mainTab,view]);
+  const toggleSel=id=>setSel(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+  const batchProfs=patch=>setProfessors(ps=>ps.map(p=>{
+    if(!sel.includes(p.id)) return p;
+    const next={...p,...patch};
+    // Same defaults as the form: reaching sent/followed without a date means "today".
+    if((next.status==="sent"||next.status==="followed")&&!next.sentDate) next.sentDate=todayStr();
+    if(next.status==="followed"&&!next.followedDate) next.followedDate=todayStr();
+    return next;
+  }));
+  const batchApps=patch=>setApplications(as=>as.map(a=>{
+    if(!sel.includes(a.id)) return a;
+    return patch.deadline?{...a,...patch,rolling:false}:{...a,...patch};
+  }));
+  const batchDelete=()=>{
+    if(!confirm(`确认删除所选的 ${sel.length} 条记录？`)) return;
+    if(mainTab==="professors") setProfessors(ps=>ps.filter(p=>!sel.includes(p.id)));
+    else setApplications(as=>as.filter(a=>!sel.includes(a.id)));
+    setSel([]);
+  };
+  const PROF_BATCH_FIELDS=[
+    {key:"status",label:"状态",type:"select",options:PROF_STATUS},
+    {key:"sentDate",label:"发送日期",type:"date"},
+    {key:"followedDate",label:"跟进日期",type:"date"},
+  ];
+  const APP_BATCH_FIELDS=[
+    {key:"status",label:"状态",type:"select",options:APP_STATUS},
+    {key:"cycle",label:"批次",type:"text"},
+    {key:"deadline",label:"截止日期",type:"date"},
+  ];
+  const selCheckbox=(ids)=>{
+    const all=ids.length>0&&ids.every(id=>sel.includes(id));
+    return <input type="checkbox" checked={all} onChange={()=>setSel(all?sel.filter(id=>!ids.includes(id)):[...new Set([...sel,...ids])])} style={{cursor:"pointer"}}/>;
   };
 
   const [reminderOpen,setReminderOpen]=useState(false);
@@ -898,22 +969,25 @@ function App(){
                 })}
               </div>
             )}
+            {view==="列表"&&sel.length>0&&<BatchBar count={sel.length} fields={PROF_BATCH_FIELDS} onApply={batchProfs} onDelete={batchDelete} onClear={()=>setSel([])}/>}
             {view==="列表"&&professors.length>0&&(
               <div style={tableWrap}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:760}}>
                   <thead>
                     <tr style={{background:C.fir,color:C.frost}}>
+                      <th style={{...thStyle,width:32}}>{selCheckbox(filteredProfs.map(p=>p.id))}</th>
                       {["导师","院校","研究方向","状态","最新沟通","关联项目","备注","操作"].map(h=><th key={h} style={thStyle}>{h}</th>)}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredProfs.length===0&&<tr><td colSpan={8} style={{textAlign:"center",padding:32,color:C.mist}}>暂无符合条件的记录</td></tr>}
+                    {filteredProfs.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:32,color:C.mist}}>暂无符合条件的记录</td></tr>}
                     {filteredProfs.map((prof,i)=>{
                       const linkedApps=applications.filter(a=>(prof.applicationIds||[]).includes(a.id));
                       const cs=prof.contacts||[];
                       const latest=cs.length>0?cs[cs.length-1]:null;
                       return(
-                        <tr key={prof.id} style={{background:i%2===0?C.cream:C.white,borderBottom:`1px solid ${C.border}`}}>
+                        <tr key={prof.id} style={{background:sel.includes(prof.id)?C.frost:i%2===0?C.cream:C.white,borderBottom:`1px solid ${C.border}`}}>
+                          <td style={td}><input type="checkbox" checked={sel.includes(prof.id)} onChange={()=>toggleSel(prof.id)} style={{cursor:"pointer"}}/></td>
                           <td style={{...td,fontWeight:700,color:C.fir,maxWidth:130,wordBreak:"break-word"}}>
                             {prof.url?<a href={prof.url} title={prof.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir}}>{prof.name} ↗</a>:prof.name}
                           </td>
@@ -964,23 +1038,26 @@ function App(){
                 })}
               </div>
             )}
+            {view==="列表"&&sel.length>0&&<BatchBar count={sel.length} fields={APP_BATCH_FIELDS} onApply={batchApps} onDelete={batchDelete} onClear={()=>setSel([])}/>}
             {view==="列表"&&applications.length>0&&(
               <div style={tableWrap}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:760}}>
                   <thead>
                     <tr style={{background:C.fir,color:C.frost}}>
+                      <th style={{...thStyle,width:32}}>{selCheckbox(filteredApps.map(a=>a.id))}</th>
                       {["学校","项目/院系","批次","状态","截止日期","关联导师","备注","操作"].map(h=><th key={h} style={thStyle}>{h}</th>)}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredApps.length===0&&<tr><td colSpan={8} style={{textAlign:"center",padding:32,color:C.mist}}>暂无符合条件的记录</td></tr>}
+                    {filteredApps.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:32,color:C.mist}}>暂无符合条件的记录</td></tr>}
                     {filteredApps.map((app,i)=>{
                       const linkedProfs=professors.filter(p=>(p.applicationIds||[]).includes(app.id));
                       const daysLeft=app.deadline?diffDays(todayStr(),app.deadline):null;
                       const urgent=daysLeft!==null&&daysLeft<=7&&daysLeft>=0;
                       const expired=daysLeft!==null&&daysLeft<0;
                       return(
-                        <tr key={app.id} style={{background:i%2===0?C.cream:C.white,borderBottom:`1px solid ${C.border}`}}>
+                        <tr key={app.id} style={{background:sel.includes(app.id)?C.frost:i%2===0?C.cream:C.white,borderBottom:`1px solid ${C.border}`}}>
+                          <td style={td}><input type="checkbox" checked={sel.includes(app.id)} onChange={()=>toggleSel(app.id)} style={{cursor:"pointer"}}/></td>
                           <td style={{...td,fontWeight:700,color:C.fir,maxWidth:150,wordBreak:"break-word"}}>
                             {app.url?<a href={app.url} title={app.url} target="_blank" rel="noopener noreferrer" style={{color:C.fir}}>{app.school} ↗</a>:app.school}
                           </td>

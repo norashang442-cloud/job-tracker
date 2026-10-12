@@ -1643,7 +1643,8 @@ function App(){
           </div>
         </div>
       </div>
-      <div style={{background:C.white,borderBottom:`1px solid ${C.border}`}}>
+      {/* 浅色信息行：主题色的极淡斜细纹 */}
+      <div style={{background:`repeating-linear-gradient(135deg, ${C.fir}0D 0 1px, transparent 1px 9px), ${C.white}`,borderBottom:`1px solid ${C.border}`}}>
         <div className="top-grid">
           <div className="top-cell">
             <Greeting events={reminderEvents} epigraph={["我们准备着深深地领受","那些意想不到的奇迹"]} epigraphBy="冯至《十四行集》"/>

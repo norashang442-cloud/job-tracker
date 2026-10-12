@@ -123,6 +123,20 @@ function downloadBackup(page,data){
   a.href=URL.createObjectURL(blob);
   a.download=`在路上-${BACKUP_NAME[page]}备份-${todayStr()}.json`;
   a.click();URL.revokeObjectURL(a.href);
+  const day=todayStr();
+  try{localStorage.setItem("backup_at_"+page,day)}catch{}
+  return day;
+}
+const getBackupAt=page=>{try{return localStorage.getItem("backup_at_"+page)||""}catch{return ""}};
+// 数据只在本机浏览器里：有数据但从没备份、或距上次备份满 BACKUP_REMIND_DAYS 天时，在备份按钮下提示一行
+const BACKUP_REMIND_DAYS=14;
+function BackupHint({at,hasData,onBackup}){
+  if(!hasData) return null;
+  const days=at?diffDays(at,todayStr()):null;
+  if(days!=null&&days<BACKUP_REMIND_DAYS) return null;
+  return <div style={{fontSize:11,color:C.textLight,marginTop:8}}>
+    {days==null?"数据只存在这个浏览器里，还没备份过":`距上次备份已经 ${days} 天`} · <span onClick={onBackup} style={{color:C.sage,cursor:"pointer",textDecoration:"underline"}}>现在备份</span>
+  </div>;
 }
 function readBackup(e,page,onData){
   const file=e.target.files[0];e.target.value="";if(!file)return;
@@ -1376,7 +1390,8 @@ function App(){
   useEffect(()=>{try{localStorage.setItem("phd_events",JSON.stringify(acts))}catch{}},[acts]);
 
   // 完整备份：套磁、网申、研究方向标签池、活动一起导出；导入按 id 合并（已有记录不覆盖）
-  const exportData=()=>downloadBackup("phd",{professors,applications,researchTags:researchTagPool,events:acts});
+  const [backupAt,setBackupAt]=useState(()=>getBackupAt("phd"));
+  const exportData=()=>setBackupAt(downloadBackup("phd",{professors,applications,researchTags:researchTagPool,events:acts}));
   const importData=e=>readBackup(e,"phd",raw=>mergeBackup(raw,[
     ["professors","套磁记录",professors,setProfessors,migrateProfessor],
     ["applications","网申项目",applications,setApplications,migrateApplication],
@@ -1600,6 +1615,7 @@ function App(){
                 ⬆ 导入<input type="file" accept=".json" onChange={importData} style={{display:"none"}}/>
               </label>
             </div>
+            <BackupHint at={backupAt} hasData={professors.length+applications.length+acts.length>0} onBackup={exportData}/>
           </div>
           <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",justifyContent:"center"}}>
             <DayCount label="申博" since={firstDate([...professors.map(p=>p.sentDate),...professors.flatMap(p=>(p.contacts||[]).map(c=>c.date)),...professors.map(p=>p.id),...applications.map(a=>a.id)])}/>

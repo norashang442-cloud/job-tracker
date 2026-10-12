@@ -207,6 +207,20 @@ function downloadBackup(page,data){
   a.href=URL.createObjectURL(blob);
   a.download=`在路上-${BACKUP_NAME[page]}备份-${todayStr()}.json`;
   a.click();URL.revokeObjectURL(a.href);
+  const day=todayStr();
+  try{localStorage.setItem("backup_at_"+page,day)}catch{}
+  return day;
+}
+const getBackupAt=page=>{try{return localStorage.getItem("backup_at_"+page)||""}catch{return ""}};
+// 数据只在本机浏览器里：有数据但从没备份、或距上次备份满 BACKUP_REMIND_DAYS 天时，在备份按钮下提示一行
+const BACKUP_REMIND_DAYS=14;
+function BackupHint({at,hasData,onBackup}){
+  if(!hasData) return null;
+  const days=at?diffDays(at,todayStr()):null;
+  if(days!=null&&days<BACKUP_REMIND_DAYS) return null;
+  return <div style={{fontSize:11,color:C.textLight,marginTop:8}}>
+    {days==null?"数据只存在这个浏览器里，还没备份过":`距上次备份已经 ${days} 天`} · <span onClick={onBackup} style={{color:C.sage,cursor:"pointer",textDecoration:"underline"}}>现在备份</span>
+  </div>;
 }
 function readBackup(e,page,onData){
   const file=e.target.files[0];e.target.value="";if(!file)return;
@@ -1549,7 +1563,8 @@ function App(){
     });
   };
   // 完整备份：本页四类数据一起导出；导入按 id 合并（已有记录不覆盖），也兼容旧版只含投递记录的文件
-  const exportData=()=>downloadBackup("job",{version:SCHEMA_VERSION,jobs,toApply,companies,events:acts});
+  const [backupAt,setBackupAt]=useState(()=>getBackupAt("job"));
+  const exportData=()=>setBackupAt(downloadBackup("job",{version:SCHEMA_VERSION,jobs,toApply,companies,events:acts}));
   const importData=e=>readBackup(e,"job",raw=>mergeBackup(Array.isArray(raw)?{jobs:raw}:raw,[
     ["jobs","投递记录",jobs,setJobs,migrateJob],
     ["toApply","待投岗位",toApply,setToApply,migrateToApply],
@@ -1816,6 +1831,7 @@ function App(){
                 ⬆ 导入<input type="file" accept=".json" onChange={importData} style={{display:"none"}}/>
               </label>
             </div>
+            <BackupHint at={backupAt} hasData={jobs.length+toApply.length+companies.length+acts.length>0} onBackup={exportData}/>
           </div>
           <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",justifyContent:"center"}}>
             <DayCount label="秋招" since={firstDate([...jobs.map(j=>j.date),...jobs.map(j=>j.id),...toApply.map(t=>t.id),...companies.map(c=>c.id)])}/>

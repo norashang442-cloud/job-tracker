@@ -57,6 +57,7 @@ button:active:not(:disabled){transform:scale(0.95);}
 .wf-tabs>.mtab{flex:1 1 auto;}
 @media (max-width:1100px){
   .top-grid{grid-template-columns:1fr;}
+  .art-day{display:none!important;}
   .top-div-dark,.top-div-light{border-left:none!important;}
   .top-cell{padding:10px 14px;}
 }
@@ -223,6 +224,67 @@ function DayHeader({events}){
 const AGENDA_W=300;
 // 中栏流程标签组的统一宽度，两个页面一致（秋招三个标签带角标时约 317px）
 const TABS_W=320;
+
+// 右栏「每日一画」：从克利夫兰艺术博物馆（Cleveland Museum of Art）的公有领域馆藏里，按主题挑好的画单每天轮换一幅；
+// 标题、作者和图片实时取自博物馆的开放接口（国内可直接访问），同一天的结果缓存在本地。点击放大。
+const artistName=desc=>(desc||"").replace(/\s*\(.*$/,"").trim();
+function ArtLightbox({art,onClose}){
+  useEffect(()=>{
+    const onKey=e=>{if(e.key==="Escape") onClose();};
+    window.addEventListener("keydown",onKey);
+    return()=>window.removeEventListener("keydown",onKey);
+  },[]);
+  return(
+    <div onClick={onClose} className="modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(20,24,22,0.85)",zIndex:200,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20,cursor:"zoom-out"}}>
+      <img src={art.img} alt={art.title} style={{maxWidth:"92vw",maxHeight:"80vh",objectFit:"contain",boxShadow:"0 10px 40px rgba(0,0,0,0.5)"}}/>
+      <div onClick={e=>e.stopPropagation()} style={{marginTop:14,textAlign:"center",color:"#EEE",fontFamily:SERIF,cursor:"default",maxWidth:"90vw"}}>
+        <div style={{fontSize:16,fontStyle:"italic"}}>{art.title}</div>
+        <div style={{fontSize:13,color:"#BBB",marginTop:4}}>{[art.artist||"佚名",art.date].filter(Boolean).join(" · ")}</div>
+        {art.page&&<a href={art.page} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginTop:8,fontSize:12,color:"#9CC"}}>在克利夫兰艺术博物馆查看 ↗</a>}
+      </div>
+    </div>
+  );
+}
+
+function ArtOfDay({ids,target}){
+  useClock();
+  const today=todayStr();
+  const key="art_of_day_"+target;
+  const pick=ids[Math.floor(Date.parse(today+"T00:00:00Z")/86400000)%ids.length];
+  const [art,setArt]=useState(()=>{try{const c=JSON.parse(localStorage.getItem(key)||"null");return c&&c.id===pick?c:null}catch{return null}});
+  const [open,setOpen]=useState(false);
+  const [broken,setBroken]=useState(false);
+  useEffect(()=>{
+    if(art&&art.id===pick) return;
+    let alive=true;
+    fetch(`https://openaccess-api.clevelandart.org/api/artworks/${pick}?fields=id,title,creators,creation_date,images,url`)
+      .then(r=>r.json())
+      .then(j=>{
+        const d=j&&j.data;
+        if(!alive||!d||!d.images||!d.images.web) return;
+        const a={id:d.id,title:d.title,artist:artistName(d.creators&&d.creators[0]&&d.creators[0].description),date:d.creation_date||"",img:d.images.web.url,page:d.url||""};
+        setArt(a); setBroken(false);
+        try{localStorage.setItem(key,JSON.stringify(a))}catch{}
+      })
+      .catch(()=>{});
+    return()=>{alive=false;};
+  },[pick]);
+  if(!art||broken) return null;
+  return(
+    <figure style={{margin:0,width:"100%",maxWidth:190,textAlign:"center"}}>
+      <img src={art.img} alt={art.title} title="点击放大" onClick={()=>setOpen(true)} onError={()=>setBroken(true)}
+        style={{display:"block",margin:"0 auto",maxWidth:"100%",maxHeight:150,objectFit:"contain",cursor:"zoom-in",background:C.white,border:`1px solid ${C.border}`,padding:3,boxShadow:`0 2px 8px ${C.shadow}`}}/>
+      <figcaption style={{fontFamily:SERIF,marginTop:7,lineHeight:1.4}}>
+        <div style={{fontSize:12,fontStyle:"italic",color:C.text,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{art.title}</div>
+        <div style={{fontSize:11,color:C.textLight,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{art.artist||"佚名"}</div>
+      </figcaption>
+      {open&&<ArtLightbox art={art} onClose={()=>setOpen(false)}/>}
+    </figure>
+  );
+}
+
+// 申博页画单：读书、治学、月夜、沉思（克利夫兰艺术博物馆作品 id）
+const ART_IDS=[128072,140337,149623,136680,149074,169545,160136,136950,149624,149605,151026,145960,118792,124804,160128,132923,161671,81391,149073,164314,150088,173242,149608,149617,131335,150841];
 
 // 顶部中栏：竖排的统计数字
 function StatList({stats}){
@@ -1458,8 +1520,8 @@ function App(){
             <DayCount label="申博" since={firstDate([...professors.map(p=>p.sentDate),...professors.flatMap(p=>(p.contacts||[]).map(c=>c.date)),...professors.map(p=>p.id),...applications.map(a=>a.id)])}/>
             <StatList stats={[["已套磁",professors.filter(p=>p.status!=="pending").length],["有回复",professors.filter(p=>["replied","talked","success"].includes(p.status)).length],["网申中",applications.filter(a=>a.status==="submitted"||a.status==="review").length]]}/>
           </div>
-          <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`}}>
-          <div style={{width:AGENDA_W,maxWidth:"100%"}}>
+          <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`,display:"flex",gap:20,alignItems:"flex-start"}}>
+          <div style={{width:AGENDA_W,flexShrink:0}}>
             <DayHeader events={reminderEvents}/>
             {/* 活动必定进入日程，所以入口放在日程上方 */}
             <button onClick={()=>setMainTab("events")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"8px 12px",borderRadius:10,border:`1px solid ${mainTab==="events"?C.sage:C.border}`,background:mainTab==="events"?C.frost:C.cream,color:C.fir,fontSize:13,fontWeight:700,cursor:"pointer",marginBottom:12}}>
@@ -1468,6 +1530,7 @@ function App(){
             </button>
             <AgendaPanel events={reminderEvents} target="phd" onOpen={openFromAgenda}/>
           </div>
+          <div className="art-day" style={{flex:1,minWidth:0,display:"flex",justifyContent:"center",paddingTop:4}}><ArtOfDay ids={ART_IDS} target="phd"/></div>
           </div>
         </div>
       </div>

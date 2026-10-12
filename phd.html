@@ -287,10 +287,15 @@ function AgendaPanel({events,target,onOpen}){
     return {rows,hidden};
   };
   const nearView=render(near,true,nearAll?0:NEAR_LIMIT);
+  // 标题里的数字：本页事项正常显示，另一边的数量用浅色附在后面
+  const counts=list=>{
+    const mine=list.filter(e=>e.mine).length,theirs=list.length-mine;
+    return <>{mine}{theirs>0&&<span style={{fontWeight:400,color:C.mist,fontSize:12}}> · {otherLabel} {theirs}</span>}</>;
+  };
   return(
     <div>
       <div onClick={toggleNear} style={{fontSize:13,fontWeight:700,color:C.fir,marginBottom:6,cursor:"pointer"}}>
-        🗓 今天 / 明天 · {near.filter(e=>e.mine).length} {nearOpen?"▲":"▼"}
+        🗓 今天 / 明天 · {counts(near)} {nearOpen?"▲":"▼"}
       </div>
       {nearOpen&&(near.length?nearView.rows:<div style={{fontSize:12,color:C.mist}}>今明两天没有安排</div>)}
       {nearOpen&&(nearView.hidden>0||nearAll)&&(

@@ -1370,25 +1370,26 @@ function App(){
     <div style={{minHeight:"100vh",background:C.cream}}>
       <div style={{background:C.fir}}>
         <div className="top-grid">
-          <div className="top-cell" style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          {/* 英文名较长，名字和切换开关上下排、左对齐；中栏两个标签也上下排，三栏统一左对齐 */}
+          <div className="top-cell" style={{display:"flex",flexDirection:"column",alignItems:"flex-start",justifyContent:"center",gap:10}}>
             <Brand label="On the Road" italic/>
             <PageSwitch current="phd"/>
           </div>
           <div className="top-cell top-div-dark" style={{display:"flex",alignItems:"center"}}>
             <div className="tabscroll">
-              <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4,flexShrink:0}}>
-                <button className="mtab" style={mainTabBtn(mainTab==="professors")} onClick={()=>setMainTab("professors")}>
+              <div style={{display:"flex",flexDirection:"column",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:20,padding:4,flexShrink:0}}>
+                <button className="mtab" style={{...mainTabBtn(mainTab==="professors"),textAlign:"left"}} onClick={()=>setMainTab("professors")}>
                   🧑‍🏫 套磁记录
                   {professors.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{professors.length}</span>}
                 </button>
-                <button className="mtab" style={mainTabBtn(mainTab==="applications")} onClick={()=>setMainTab("applications")}>
+                <button className="mtab" style={{...mainTabBtn(mainTab==="applications"),textAlign:"left"}} onClick={()=>setMainTab("applications")}>
                   🎓 网申项目
                   {applications.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{applications.length}</span>}
                 </button>
               </div>
             </div>
           </div>
-          <div className="top-cell top-div-dark hdr-actions" style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexWrap:"wrap"}}>
+          <div className="top-cell top-div-dark hdr-actions" style={{display:"flex",alignItems:"center",justifyContent:"flex-start",gap:8,flexWrap:"wrap"}}>
             {mainTab==="professors"&&<button onClick={()=>setPModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14,whiteSpace:"nowrap"}}>＋ 添加套磁记录</button>}
             {mainTab==="applications"&&<button onClick={()=>setAModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14,whiteSpace:"nowrap"}}>＋ 添加网申项目</button>}
             {mainTab==="events"&&<button onClick={()=>setActModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14,whiteSpace:"nowrap"}}>＋ 添加活动</button>}

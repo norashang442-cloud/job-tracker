@@ -30,9 +30,11 @@ function fold(line) {
   return out.join("\r\n ");
 }
 
+// Only milestones (online tests, interviews…) get alarms — missing those can't be undone. Deadlines, follow-ups,
+// to-dos and activities show up in the calendar and daily email without ringing.
 // One alarm per remindOn date. All-day events fire at 09:00 local on that day; timed events fire N days before, or 2h before on the day itself.
 function alarms(e) {
-  if (e.noAlarm) return [];
+  if (e.kind !== "milestone" || e.noAlarm) return [];
   return (e.remindOn || []).map(r => {
     const d = diffDays(r, e.date);
     let trigger;

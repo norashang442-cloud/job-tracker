@@ -1660,7 +1660,7 @@ function App(){
               </div>
             </div>
           </div>
-          <div className="top-cell top-div-dark hdr-actions" style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexWrap:"wrap"}}>
+          <div className="top-cell top-div-dark hdr-actions" style={{display:"flex",alignItems:"center",justifyContent:"flex-start",gap:8,flexWrap:"wrap"}}>
             {mainTab==="events"&&<button onClick={()=>setActModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14,whiteSpace:"nowrap"}}>＋ 添加活动</button>}
             {mainTab==="tracker"&&<>
               <button onClick={()=>setModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14,whiteSpace:"nowrap"}}>＋ 添加投递</button>

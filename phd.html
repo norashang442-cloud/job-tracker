@@ -123,6 +123,38 @@ async function accountCall(action,payload={}){
   if(!res.ok){const e=new Error(d.error||"请求失败，检查网络");e.status=res.status;throw e;}
   return d;
 }
+// ---------- 本地记录按账号分开，与 index.html / phd.html 保持一致 ----------
+// 投递、套磁等记录只存在浏览器里。登录后键名加 "u:用户名:" 前缀，同一个浏览器上不同账号各看各的；
+// 未登录或用旧密钥时用原来的键名。当前账号记在 jt4_user，切换账号后整页刷新。
+const LS_USER=(()=>{try{return localStorage.getItem("jt4_user")||""}catch{return ""}})();
+const lsKey=k=>LS_USER?`u:${LS_USER}:${k}`:k;
+const LOCAL_DATA_KEYS=["jt4","jt4_toApply","jt4_companies","jt4_events","jt4_rolling_remind_init","backup_at_job","agenda_job",
+  "phd_professors","phd_applications","phd_research_tags","phd_events","backup_at_phd","agenda_phd","jt4_deepseek_key"];
+const LOCAL_RECORD_KEYS=["jt4","jt4_toApply","jt4_companies","jt4_events","phd_professors","phd_applications","phd_events"];
+// 第一次登录某个账号、而浏览器里有未登录时记的数据：问一次要不要把它们移到这个账号下
+function claimLocalData(name){
+  try{
+    const unowned=LOCAL_RECORD_KEYS.some(k=>{const v=localStorage.getItem(k);return v&&v!=="[]";});
+    const mine=LOCAL_DATA_KEYS.some(k=>localStorage.getItem(`u:${name}:${k}`)!=null);
+    if(!unowned||mine) return;
+    if(!confirm(`这个浏览器里有未登录时记下的投递 / 套磁记录。\n要把它们归到账号「${name}」下吗？\n\n确定：记录移到这个账号，退出登录后就看不到了。\n取消：这个账号从空白开始，原记录留在未登录状态下。`)) return;
+    LOCAL_DATA_KEYS.forEach(k=>{const v=localStorage.getItem(k);if(v!=null){localStorage.setItem(`u:${name}:${k}`,v);localStorage.removeItem(k);}});
+  }catch{}
+}
+function switchLocalUser(name){
+  if(name) claimLocalData(name);
+  try{name?localStorage.setItem("jt4_user",name):localStorage.removeItem("jt4_user")}catch{}
+  location.reload();
+}
+// 页面打开时核对：浏览器里的登录身份和本地记录所属账号不一致（比如这个功能上线前就登录了），就切过去
+async function syncLocalUser(){
+  if(!getKey()){if(LS_USER) switchLocalUser("");return;}
+  try{
+    const {user}=await accountCall("me");
+    const want=user.legacy?"":user.name;
+    if(want!==LS_USER) switchLocalUser(want);
+  }catch{}
+}
 function AccountBox({me,onAuth,smallBtn}){
   const [mode,setMode]=useState("login");
   const [f,setF]=useState({username:"",password:"",code:""});
@@ -136,7 +168,7 @@ function AccountBox({me,onAuth,smallBtn}){
   );
   const submit=async e=>{
     e.preventDefault();setBusy(true);setErr("");
-    try{const d=await accountCall(mode,f);onAuth(d.token);}catch(x){setErr(x.message);}
+    try{const d=await accountCall(mode,f);onAuth(d.token,d.user.name);}catch(x){setErr(x.message);}
     setBusy(false);
   };
   const tab=on=>({...smallBtn,...(on?{background:C.sage,color:C.white,border:"none"}:{})});
@@ -204,15 +236,15 @@ function MailSettings({me,smallBtn}){
   );
 }
 // 自动填写（AI）：浏览器里存了自己的 DeepSeek key 就用它；否则用登录身份走系统额度（站长开通，每天有上限）
-const getAiKey=()=>{try{return localStorage.getItem("jt4_deepseek_key")||""}catch{return ""}};
+const getAiKey=()=>{try{return localStorage.getItem(lsKey("jt4_deepseek_key"))||""}catch{return ""}};
 const aiHeaders=()=>({"Content-Type":"application/json","X-Inbox-Key":getKey(),...(getAiKey()?{"X-DeepSeek-Key":getAiKey()}:{})});
 const isAiGateMsg=m=>/自动填写|DeepSeek|系统额度/.test(m||"");
 const aiFailMsg=e=>isAiGateMsg(e?.message)?"⚠️ "+e.message:"⚠️ 提取失败，请手动填写";
 function AiSettings({me,smallBtn,section}){
   const [own,setOwn]=useState(getAiKey);
   const [input,setInput]=useState("");
-  const save=()=>{const k=input.trim();if(!k)return;try{localStorage.setItem("jt4_deepseek_key",k)}catch{} setOwn(k);setInput("");};
-  const clear=()=>{try{localStorage.removeItem("jt4_deepseek_key")}catch{} setOwn("");};
+  const save=()=>{const k=input.trim();if(!k)return;try{localStorage.setItem(lsKey("jt4_deepseek_key"),k)}catch{} setOwn(k);setInput("");};
+  const clear=()=>{try{localStorage.removeItem(lsKey("jt4_deepseek_key"))}catch{} setOwn("");};
   const status=own?<>使用你自己的 DeepSeek key（{own.slice(0,5)}…{own.slice(-4)}），只存在这个浏览器里</>
     :me?.owner?"站长：使用系统额度，不限次数"
     :me?.aiAllowed?`使用系统额度，每天最多 ${me.aiLimit} 次`
@@ -274,10 +306,10 @@ function downloadBackup(page,data){
   a.download=`在路上-${BACKUP_NAME[page]}备份-${todayStr()}.json`;
   a.click();URL.revokeObjectURL(a.href);
   const day=todayStr();
-  try{localStorage.setItem("backup_at_"+page,day)}catch{}
+  try{localStorage.setItem(lsKey("backup_at_"+page),day)}catch{}
   return day;
 }
-const getBackupAt=page=>{try{return localStorage.getItem("backup_at_"+page)||""}catch{return ""}};
+const getBackupAt=page=>{try{return localStorage.getItem(lsKey("backup_at_"+page))||""}catch{return ""}};
 // 数据只在本机浏览器里：有数据但从没备份、或距上次备份满 BACKUP_REMIND_DAYS 天时，在备份按钮下提示一行
 const BACKUP_REMIND_DAYS=14;
 function BackupHint({at,hasData,onBackup}){
@@ -331,7 +363,7 @@ function useReminderSync(target,events){
   };
   useEffect(()=>{const t=setTimeout(run,1500);return()=>clearTimeout(t);},[json]);
   // 本地缓存一份，给另一个页面的日程卡片读
-  useEffect(()=>{try{localStorage.setItem("agenda_"+target,json)}catch{}},[json]);
+  useEffect(()=>{try{localStorage.setItem(lsKey("agenda_"+target),json)}catch{}},[json]);
   return [sync,run];
 }
 
@@ -560,7 +592,7 @@ function AgendaPanel({events,target,onOpen}){
   const toggleGroup=k=>setOpenGroups(g=>({...g,[k]:!g[k]}));
   const today=todayStr(),tomorrow=addDays(today,1),week=addDays(today,7);
   let otherEvents=[];
-  try{otherEvents=JSON.parse(localStorage.getItem("agenda_"+other)||"[]")}catch{}
+  try{otherEvents=JSON.parse(localStorage.getItem(lsKey("agenda_"+other))||"[]")}catch{}
   const all=[...events.map(e=>({...e,mine:true})),...otherEvents.map(e=>({...e,mine:false}))]
     .sort((a,b)=>(a.date+(a.time||"99")).localeCompare(b.date+(b.time||"99")));
   // 另一边逾期的待办不占用具体时间段，只显示本页自己的
@@ -651,7 +683,7 @@ function ReminderPanel({sync,resync}){
     if(!key){setMe(null);return;}
     accountCall("me").then(d=>setMe(d.user)).catch(()=>setMe(null));
   },[key]);
-  const onAuth=k=>{setKey(k);setKeyState(k);resync();};
+  const onAuth=(k,name)=>{setKey(k);setKeyState(k);switchLocalUser(k?name:"");};
   // 日历用单独的日历令牌；旧密钥登录时没有令牌，就沿用旧密钥
   const calToken=me?.calToken||(me?.legacy?key:"");
   const calPath=`${location.host}/api/calendar/${encodeURIComponent(calToken)}.ics`;
@@ -1460,16 +1492,17 @@ function BatchBar({count,fields,onApply,onDelete,onClear}){
 }
 
 function App(){
-  const [professors,setProfessors]=useState(()=>{try{return JSON.parse(localStorage.getItem("phd_professors")||"[]").map(migrateProfessor)}catch{return []}});
-  const [applications,setApplications]=useState(()=>{try{return JSON.parse(localStorage.getItem("phd_applications")||"[]").map(migrateApplication)}catch{return []}});
+  useEffect(()=>{syncLocalUser();},[]);
+  const [professors,setProfessors]=useState(()=>{try{return JSON.parse(localStorage.getItem(lsKey("phd_professors"))||"[]").map(migrateProfessor)}catch{return []}});
+  const [applications,setApplications]=useState(()=>{try{return JSON.parse(localStorage.getItem(lsKey("phd_applications"))||"[]").map(migrateApplication)}catch{return []}});
   const [researchTagPool,setResearchTagPool]=useState(()=>{
     try{
-      const saved=JSON.parse(localStorage.getItem("phd_research_tags")||"null");
+      const saved=JSON.parse(localStorage.getItem(lsKey("phd_research_tags"))||"null");
       if(Array.isArray(saved)) return saved;
     }catch{}
     // 首次运行：从已有套磁记录里回填标签池，兼容旧的自由文本研究方向字段
     try{
-      const profs=JSON.parse(localStorage.getItem("phd_professors")||"[]");
+      const profs=JSON.parse(localStorage.getItem(lsKey("phd_professors"))||"[]");
       const set=new Set();
       profs.forEach(p=>{
         const areas=Array.isArray(p.researchAreas)?p.researchAreas:(p.researchArea?String(p.researchArea).split(/[、,，;；\/]+/).map(s=>s.trim()).filter(Boolean):[]);
@@ -1492,9 +1525,9 @@ function App(){
   const [convertingInboxId,setConvertingInboxId]=useState(null);
   const [inboxExtractions,setInboxExtractions]=useState({});
 
-  useEffect(()=>{try{localStorage.setItem("phd_professors",JSON.stringify(professors))}catch{}},[professors]);
-  useEffect(()=>{try{localStorage.setItem("phd_applications",JSON.stringify(applications))}catch{}},[applications]);
-  useEffect(()=>{try{localStorage.setItem("phd_research_tags",JSON.stringify(researchTagPool))}catch{}},[researchTagPool]);
+  useEffect(()=>{try{localStorage.setItem(lsKey("phd_professors"),JSON.stringify(professors))}catch{}},[professors]);
+  useEffect(()=>{try{localStorage.setItem(lsKey("phd_applications"),JSON.stringify(applications))}catch{}},[applications]);
+  useEffect(()=>{try{localStorage.setItem(lsKey("phd_research_tags"),JSON.stringify(researchTagPool))}catch{}},[researchTagPool]);
   const addResearchTag=tag=>setResearchTagPool(pool=>pool.includes(tag)?pool:[...pool,tag].sort((a,b)=>a.localeCompare(b,"zh")));
 
   const saveProf=item=>{
@@ -1546,8 +1579,8 @@ function App(){
   };
 
   const [reminderOpen,setReminderOpen]=useState(false);
-  const [acts,setActs]=useState(()=>{try{return JSON.parse(localStorage.getItem("phd_events")||"[]").map(migrateEvent)}catch{return []}});
-  useEffect(()=>{try{localStorage.setItem("phd_events",JSON.stringify(acts))}catch{}},[acts]);
+  const [acts,setActs]=useState(()=>{try{return JSON.parse(localStorage.getItem(lsKey("phd_events"))||"[]").map(migrateEvent)}catch{return []}});
+  useEffect(()=>{try{localStorage.setItem(lsKey("phd_events"),JSON.stringify(acts))}catch{}},[acts]);
 
   // 完整备份：套磁、网申、研究方向标签池、活动一起导出；导入按 id 合并（已有记录不覆盖）
   const [backupAt,setBackupAt]=useState(()=>getBackupAt("phd"));

@@ -1,4 +1,4 @@
-import { kv, cors, randomToken, hashPassword, checkPassword, getUser, resolveUser } from "./_lib.js";
+import { kv, cors, randomToken, hashPassword, checkPassword, getUser, resolveUser, keyFor, getSettings, encrypt } from "./_lib.js";
 
 // Accounts: invite-only registration, username + password login.
 // Registering with INBOX_SECRET as the invite code creates the owner account (once); the owner hands out invite codes.
@@ -61,6 +61,28 @@ export default async function handler(req, res) {
     switch (body.action) {
       case "me":
         return res.status(200).json({ user: me });
+
+      // Mail settings: the user's own Resend key (only ever returned as a masked hint) and the address it may send to.
+      case "settings-get": {
+        const s = await getSettings(me);
+        return res.status(200).json({ email: s.email || "", resendHint: s.resendHint || "", envFallback: me.owner && !!process.env.RESEND_API_KEY });
+      }
+
+      case "settings-set": {
+        const s = await getSettings(me);
+        const email = String(body.email ?? s.email ?? "").trim();
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: "邮箱格式不对" });
+        const next = { ...s, email };
+        const resendKey = String(body.resendKey || "").trim();
+        if (resendKey) {
+          if (!/^re_\w{8,}$/.test(resendKey)) return res.status(400).json({ error: "Resend key 应该以 re_ 开头，检查是否复制完整" });
+          next.resendKey = encrypt(resendKey);
+          next.resendHint = `${resendKey.slice(0, 5)}…${resendKey.slice(-4)}`;
+        }
+        if (body.clearResend) { delete next.resendKey; delete next.resendHint; }
+        await kv(["SET", keyFor(me, "settings"), JSON.stringify(next)]);
+        return res.status(200).json({ email: next.email, resendHint: next.resendHint || "" });
+      }
 
       case "invite-create": {
         if (!me.owner) return res.status(403).json({ error: "只有站长能生成邀请码" });

@@ -241,6 +241,52 @@ function AccountBox({me,onAuth,smallBtn}){
     </form>
   );
 }
+// 每日邮件：每个人用自己的 Resend 账号发给自己（没有自己的域名时，Resend 只能发到注册它的邮箱）
+function MailSettings({me,smallBtn}){
+  const [s,setS]=useState(null);
+  const [editing,setEditing]=useState(false);
+  const [email,setEmail]=useState("");
+  const [rk,setRk]=useState("");
+  const [msg,setMsg]=useState("");
+  useEffect(()=>{accountCall("settings-get").then(d=>{setS(d);setEmail(d.email);setEditing(!(d.email&&d.resendHint));}).catch(()=>{});},[me?.name]);
+  if(!s) return null;
+  const save=async()=>{
+    setMsg("保存中…");
+    try{const d=await accountCall("settings-set",{email,resendKey:rk});setS(x=>({...x,...d}));setRk("");setEditing(false);setMsg("✅ 已保存，点下面「发一封测试邮件」试试");}
+    catch(e){setMsg("⚠️ "+e.message);}
+  };
+  const box={background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:12,marginBottom:10,fontSize:12,color:C.textLight,lineHeight:1.7};
+  const msgEl=msg&&<div style={{color:msg.startsWith("⚠️")?"#b05050":C.sage}}>{msg}</div>;
+  if(!editing) return(
+    <div style={box}>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <span style={{flex:1}}>{s.resendHint?<>发到 <b style={{color:C.text}}>{s.email}</b> · Resend key {s.resendHint}</>:"使用部署环境变量里的 Resend 设置"}</span>
+        <button onClick={()=>setEditing(true)} style={smallBtn}>修改</button>
+      </div>
+      {msgEl}
+    </div>
+  );
+  return(
+    <div style={box}>
+      {s.envFallback&&!s.resendHint&&<div style={{marginBottom:6}}>现在用的是部署环境变量里的 Resend 设置；在这里填了就以这里为准。</div>}
+      <ol style={{paddingLeft:18,margin:"0 0 8px"}}>
+        <li>打开 <a href="https://resend.com/signup" target="_blank" rel="noopener noreferrer" style={{color:C.sage}}>resend.com</a>，<b>用你想收提醒的邮箱</b>注册（只能发到这个邮箱）</li>
+        <li>在 API Keys 里新建一个 key，名字随便填，权限选 <b>Sending access</b></li>
+        <li>把 key 和邮箱填在下面、保存，再点「发一封测试邮件」，收到就说明成功了</li>
+      </ol>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="收信邮箱（= 注册 Resend 的邮箱）" autoComplete="email" style={{...inp,background:C.white}}/>
+        <input type="password" value={rk} onChange={e=>setRk(e.target.value)} placeholder={s.resendHint?`已保存 ${s.resendHint}，留空则不改`:"Resend key（re_ 开头）"} autoComplete="off" style={{...inp,background:C.white}}/>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <button onClick={save} style={{...smallBtn,background:C.sage,color:C.white,border:"none"}}>保存</button>
+          {(s.resendHint||s.envFallback)&&<button onClick={()=>{setEditing(false);setMsg("");}} style={smallBtn}>取消</button>}
+        </div>
+        {msgEl}
+      </div>
+      <div style={{marginTop:8,fontSize:11}}>key 会加密保存在服务器上，用来每天替你发信。不想用了可以随时在 Resend 后台删除它。</div>
+    </div>
+  );
+}
 // 站长：生成 / 作废邀请码，看有哪些用户
 function AdminBox({smallBtn}){
   const [data,setData]=useState(null);
@@ -684,6 +730,7 @@ function ReminderPanel({sync,resync}){
       {me&&<>
         <div style={section}>📧 每日邮件</div>
         <div style={{fontSize:12,color:C.textLight,lineHeight:1.6,marginBottom:8}}>每天早上 8 点（北京时间）检查一次，有到期事项才发信。待投岗位的「提醒我」和套磁跟进到期后会每天重复提醒，直到你处理。</div>
+        <MailSettings me={me} smallBtn={smallBtn}/>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <a href={`/api/remind?dry=1&key=${encodeURIComponent(key)}`} target="_blank" rel="noopener noreferrer" style={smallBtn}>预览今天的邮件</a>
           <button onClick={sendTest} style={{...smallBtn,background:C.sage,color:C.white,border:"none"}}>发一封测试邮件</button>

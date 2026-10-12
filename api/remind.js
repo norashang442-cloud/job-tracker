@@ -1,4 +1,4 @@
-import { kv, keyFor, getUser, resolveUser } from "./_lib.js";
+import { kv, keyFor, getUser, resolveUser, getSettings, decrypt } from "./_lib.js";
 
 async function loadEvents(user) {
   const raws = await kv(["MGET", keyFor(user, "reminders_job"), keyFor(user, "reminders_phd")]) || [];
@@ -68,7 +68,57 @@ function buildEmail(due, today, siteUrl, calendarUrl) {
   return { subject, html };
 }
 
-// Called daily by Vercel Cron (Authorization: Bearer CRON_SECRET), or manually with ?key=INBOX_SECRET.
+// Each user mails themselves with their own Resend key; the owner may instead rely on the env-configured account.
+async function mailConfig(user) {
+  const s = await getSettings(user);
+  const key = s.resendKey ? decrypt(s.resendKey) : "";
+  if (key && s.email) return { key, to: [s.email], from: "在路上 提醒 <onboarding@resend.dev>" };
+  if (user.owner && process.env.RESEND_API_KEY && process.env.REMIND_EMAIL_TO) {
+    return {
+      key: process.env.RESEND_API_KEY,
+      to: process.env.REMIND_EMAIL_TO.split(",").map(s => s.trim()).filter(Boolean),
+      from: process.env.REMIND_EMAIL_FROM || "Tracker 提醒 <onboarding@resend.dev>",
+    };
+  }
+  return null;
+}
+
+// Resend's errors are in English and terse; say what to fix.
+function explainResend(status, data) {
+  const msg = String(data?.message || data?.error || "");
+  if (/own email address/i.test(msg)) return "收信邮箱必须是你注册 Resend 时用的那个邮箱（没有验证域名时只能发给自己）";
+  if (status === 401 || status === 403 && /api key/i.test(msg)) return "Resend key 不对或已被删除，请重新创建一个粘贴进来";
+  if (status === 422) return `收信邮箱或发信参数有误（${msg}）`;
+  if (status === 429) return "发送太频繁，过一会儿再试";
+  return `Resend 发送失败（${status}${msg ? "：" + msg : ""}）`;
+}
+
+// Build and (unless nothing is due) send one user's digest. Returns { sent, due } or { error }.
+async function runFor(user, { today, test, siteUrl }) {
+  const due = (await loadEvents(user)).filter(e => isDue(e, today));
+  if (!due.length && !test) return { sent: false, due: 0 };
+  const mail = await mailConfig(user);
+  if (!mail) return { error: "还没填 Resend key 和收信邮箱", due: due.length };
+  const calendarUrl = `${siteUrl}/api/calendar?subscribe=1&key=${encodeURIComponent(await calendarToken(user))}`;
+  const { subject, html } = buildEmail(due, today, siteUrl, calendarUrl);
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${mail.key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: mail.from, to: mail.to, subject, html }),
+  });
+  const data = await r.json().catch(() => ({}));
+  return r.ok ? { sent: true, due: due.length, id: data.id } : { error: explainResend(r.status, data), due: due.length };
+}
+
+// Everyone with an account, plus the owner (who keeps the original keys even before registering).
+async function allUsers() {
+  const names = (await kv(["SMEMBERS", "users"])) || [];
+  const users = (await Promise.all(names.map(getUser))).filter(u => u && !u.owner);
+  return [{ name: (await kv(["GET", "owner_user"])) || "站长", owner: true },
+    ...users.map(u => ({ name: u.name, owner: false, calToken: u.calToken }))];
+}
+
+// Called daily by Vercel Cron (Authorization: Bearer CRON_SECRET) for every user, or manually by a signed-in user for themselves.
 // ?dry=1 previews without sending, ?date=YYYY-MM-DD simulates another day, ?test=1 sends even when nothing is due.
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -82,37 +132,30 @@ export default async function handler(req, res) {
   const siteUrl = process.env.SITE_URL || `https://${req.headers["x-forwarded-host"] || req.headers.host}`;
 
   try {
-    // The cron run still mails only the owner, through the env-configured Resend account.
-    const user = cronOk ? { owner: true } : await resolveUser(req);
+    if (cronOk && !req.headers["x-inbox-key"] && !req.query.key) {
+      const results = [];
+      for (const u of await allUsers()) {
+        try { results.push({ user: u.name, ...(await runFor(u, { today, test: false, siteUrl })) }); }
+        catch (err) { results.push({ user: u.name, error: err.message }); }
+      }
+      return res.status(200).json({ ok: true, date: today, results });
+    }
+
+    const user = await resolveUser(req);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    if (!user.owner && !dry) return res.status(400).json({ error: "邮件提醒还没对其他账号开放，敬请期待" });
-    const calendarUrl = `${siteUrl}/api/calendar?subscribe=1&key=${encodeURIComponent(await calendarToken(user))}`;
-    const due = (await loadEvents(user)).filter(e => isDue(e, today));
-    const { subject, html } = buildEmail(due, today, siteUrl, calendarUrl);
 
     if (dry) {
+      const due = (await loadEvents(user)).filter(e => isDue(e, today));
+      const calendarUrl = `${siteUrl}/api/calendar?subscribe=1&key=${encodeURIComponent(await calendarToken(user))}`;
+      const { subject, html } = buildEmail(due, today, siteUrl, calendarUrl);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       return res.status(200).send(`<div style="background:#FFF6D6;padding:10px 14px;font:13px sans-serif;margin-bottom:12px">
         预览（未发送）· 模拟日期 ${esc(today)} · 主题：${esc(subject)}${due.length ? "" : " · 今天没有到期事项，定时任务不会发信"}</div>${html}`);
     }
-    if (!due.length && !test) return res.status(200).json({ ok: true, sent: false, date: today, due: 0 });
 
-    if (!process.env.RESEND_API_KEY || !process.env.REMIND_EMAIL_TO) {
-      return res.status(500).json({ error: "缺少 RESEND_API_KEY 或 REMIND_EMAIL_TO 环境变量" });
-    }
-    const r = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: process.env.REMIND_EMAIL_FROM || "Tracker 提醒 <onboarding@resend.dev>",
-        to: process.env.REMIND_EMAIL_TO.split(",").map(s => s.trim()).filter(Boolean),
-        subject,
-        html,
-      }),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) return res.status(502).json({ error: "Resend 发送失败", detail: data });
-    res.status(200).json({ ok: true, sent: true, date: today, due: due.length, id: data.id });
+    const out = await runFor(user, { today, test, siteUrl });
+    if (out.error) return res.status(400).json(out);
+    res.status(200).json({ ok: true, date: today, ...out });
   } catch (err) {
     res.status(500).json({ error: "Failed", detail: err.message });
   }

@@ -9,7 +9,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'PingFang SC','Inter',sans-serif;background:#F1F4F9;color:#1C2433;}
+body{font-family:-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#F1F4F9;color:#1C2433;}
+/* 按钮、输入框默认用系统控件字体，统一改成继承页面字体：全页只有这一套无衬线体 + 标题用的 SERIF */
+button,input,select,textarea{font-family:inherit;}
 button:focus,input:focus,select:focus,textarea:focus{outline:2px solid #5A7BA6;outline-offset:1px;}
 ::-webkit-scrollbar{width:6px;height:6px;}
 ::-webkit-scrollbar-track{background:#F1F4F9;}
@@ -393,15 +395,19 @@ function useClock(ms=300000){
 }
 
 // 顶部左栏：日期 + 题记，像一张小摘录
+// 三栏开头统一成「衬线标题 + 一行副标题」，字号、行高、间距一致，三栏的第二部分就能对齐
+function ColTitle({title,sub}){
+  return(
+    <div style={{marginBottom:14}}>
+      <div style={{fontFamily:SERIF,fontSize:20,fontWeight:700,color:C.fir,lineHeight:1.4}}>{title}</div>
+      <div style={{fontSize:13,color:C.textLight,lineHeight:1.5,marginTop:2,minHeight:19}}>{sub}</div>
+    </div>
+  );
+}
 function DateTitle(){
   useClock();
   const now=new Date();
-  return(
-    <div style={{fontFamily:SERIF,color:C.fir,whiteSpace:"nowrap",marginBottom:10}}>
-      <span style={{fontSize:24,fontWeight:700}}>{now.getMonth()+1}月{now.getDate()}日</span>
-      <span style={{fontSize:15,marginLeft:10,color:C.textLight}}>星期{weekday(todayStr())}</span>
-    </div>
-  );
+  return <ColTitle title={`${now.getMonth()+1}月${now.getDate()}日`} sub={`星期${weekday(todayStr())}`}/>;
 }
 function Epigraph({lines,by,italic}){
   return(
@@ -425,8 +431,15 @@ function firstDate(values){
 }
 function DayCount({label,since}){
   useClock();
-  if(!since) return null;
-  return <div style={{fontFamily:SERIF,fontSize:18,fontWeight:700,color:C.fir,marginBottom:12}}>{label}第 {diffDays(since,todayStr())+1} 天</div>;
+  const today=todayStr();
+  const n=since?diffDays(since,today)+1:1;
+  const [,m,d]=(since||today).split("-").map(Number);
+  return <ColTitle title={`${LS_USER?LS_USER+"，":""}今天是你${label}的第 ${n} 天`} sub={since?`从 ${m}月${d}日的第一条记录算起`:"从今天开始记录"}/>;
+}
+// 中栏统计数字旁边：账号入口（登录后显示「账号设置」，未登录时高亮「登录 / 注册」）
+function AccountButton({onClick}){
+  const on=!!LS_USER;
+  return <button onClick={onClick} style={{marginLeft:"auto",alignSelf:"center",background:on?C.white:C.sage,color:on?C.textLight:C.white,border:on?`1px solid ${C.border}`:"none",borderRadius:10,padding:"9px 14px",fontSize:13,fontWeight:on?400:700,cursor:"pointer",whiteSpace:"nowrap"}}>{on?"👤 账号设置":"👤 登录 / 注册"}</button>;
 }
 
 // 顶部右栏开头：随时段变化的一句问候，和一句克制的当日概况（时间敏感的内容都放在右栏）
@@ -443,12 +456,7 @@ function DayHeader({events}){
   if(n("activity")) parts.push(`${n("activity")} 个活动`);
   const rest=todayItems.length-n("milestone")-n("activity");
   if(rest) parts.push(`${rest} 件事待处理`);
-  return(
-    <div style={{marginBottom:12}}>
-      <div style={{fontFamily:SERIF,fontSize:18,fontWeight:700,color:C.fir}}>{greet}</div>
-      {parts.length>0&&<div style={{fontSize:13,color:C.textLight,marginTop:3}}>今天 {parts.join("，")}</div>}
-    </div>
-  );
+  return <ColTitle title={greet} sub={parts.length?`今天 ${parts.join("，")}`:"今天没有要处理的事"}/>;
 }
 
 // 右栏：日程和上方操作按钮的统一宽度，右边缘对齐（与秋招页一致）
@@ -674,16 +682,37 @@ function AgendaPanel({events,target,onOpen}){
   );
 }
 
-function ReminderPanel({sync,resync}){
+// 当前登录的账号（从服务器取一次）；loading 时还不知道是否登录
+function useMe(){
+  const key=getKey();
+  const [state,setState]=useState({me:null,loading:!!key});
+  useEffect(()=>{
+    if(!key){setState({me:null,loading:false});return;}
+    accountCall("me").then(d=>setState({me:d.user,loading:false})).catch(()=>setState({me:null,loading:false}));
+  },[key]);
+  return state;
+}
+const panelBtn={padding:"5px 12px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:12,cursor:"pointer",textDecoration:"none",whiteSpace:"nowrap"};
+const panelSection={fontSize:13,fontWeight:700,color:C.moss,margin:"18px 0 8px"};
+// 账号面板：登录 / 注册、站长管理、自动填写设置
+function AccountPanel(){
+  const {me,loading}=useMe();
+  const onAuth=(k,name)=>{setKey(k);switchLocalUser(k?name:"");};
+  return(
+    <div>
+      <h3 style={{color:C.fir,fontSize:17,marginBottom:10}}>👤 账号</h3>
+      {loading?<div style={{fontSize:12,color:C.textLight}}>加载中…</div>:<AccountBox me={me} onAuth={onAuth} smallBtn={panelBtn}/>}
+      {me?.owner&&<AdminBox smallBtn={panelBtn}/>}
+      {!loading&&<AiSettings me={me} smallBtn={panelBtn} section={panelSection}/>}
+    </div>
+  );
+}
+
+function ReminderPanel({sync,resync,onOpenAccount}){
   const [msg,setMsg]=useState("");
   const [copied,setCopied]=useState(false);
-  const [key,setKeyState]=useState(getKey);
-  const [me,setMe]=useState(null);
-  useEffect(()=>{
-    if(!key){setMe(null);return;}
-    accountCall("me").then(d=>setMe(d.user)).catch(()=>setMe(null));
-  },[key]);
-  const onAuth=(k,name)=>{setKey(k);setKeyState(k);switchLocalUser(k?name:"");};
+  const key=getKey();
+  const {me,loading}=useMe();
   // 日历用单独的日历令牌；旧密钥登录时没有令牌，就沿用旧密钥
   const calToken=me?.calToken||(me?.legacy?key:"");
   const calPath=`${location.host}/api/calendar/${encodeURIComponent(calToken)}.ics`;
@@ -704,16 +733,17 @@ function ReminderPanel({sync,resync}){
   const section={fontSize:13,fontWeight:700,color:C.moss,margin:"18px 0 8px"};
   return(
     <div>
-      <h3 style={{color:C.fir,fontSize:17,marginBottom:10}}>⚙️ 账号与提醒</h3>
-      <AccountBox me={me} onAuth={onAuth} smallBtn={smallBtn}/>
-      {me?.owner&&<AdminBox smallBtn={smallBtn}/>}
+      <h3 style={{color:C.fir,fontSize:17,marginBottom:10}}>🔔 提醒</h3>
+      {!me&&!loading&&<div style={{fontSize:12,color:C.textLight,lineHeight:1.7}}>
+        登录后才能把提醒同步到云端、收每日邮件、订阅日历。
+        <button onClick={onOpenAccount} style={{...smallBtn,marginLeft:8}}>去登录</button>
+      </div>}
       {me&&<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",fontSize:12,marginTop:10,color:sync.state==="ok"?C.sage:C.textLight}}>
         <span style={{flex:1}}>{syncText}</span>
         <button onClick={resync} style={smallBtn}>立即同步</button>
       </div>}
 
 
-      <AiSettings me={me} smallBtn={smallBtn} section={section}/>
       {me&&<>
         <div style={section}>📧 每日邮件</div>
         <div style={{fontSize:12,color:C.textLight,lineHeight:1.6,marginBottom:8}}>每天早上 8 点（北京时间）检查一次，有到期事项才发信。套磁跟进会每天重复提醒，直到你改了状态。</div>
@@ -1495,6 +1525,7 @@ function BatchBar({count,fields,onApply,onDelete,onClear}){
 
 function App(){
   useEffect(()=>{syncLocalUser();},[]);
+  const [accountOpen,setAccountOpen]=useState(false);
   const [professors,setProfessors]=useState(()=>{try{return JSON.parse(localStorage.getItem(lsKey("phd_professors"))||"[]").map(migrateProfessor)}catch{return []}});
   const [applications,setApplications]=useState(()=>{try{return JSON.parse(localStorage.getItem(lsKey("phd_applications"))||"[]").map(migrateApplication)}catch{return []}});
   const [researchTagPool,setResearchTagPool]=useState(()=>{
@@ -1793,7 +1824,7 @@ function App(){
               <button onClick={toggleInbox} style={{background:C.white,color:C.textLight,border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>
                 📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""}
               </button>
-              <button onClick={()=>setReminderOpen(true)} title="提醒设置：邮件、日历订阅、同步状态"
+              <button onClick={()=>setReminderOpen(true)} title="提醒：同步状态、每日邮件、日历订阅"
               style={{background:remindWarn||remindHot?"#C0392B":C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 14px",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
               🔔 提醒{remindHot>0?` (${remindHot})`:""}{remindWarn?" ⚠️":""}
             </button>
@@ -1804,9 +1835,12 @@ function App(){
             </div>
             <BackupHint at={backupAt} hasData={professors.length+applications.length+acts.length>0} onBackup={exportData}/>
           </div>
-          <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",justifyContent:"center"}}>
+          <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`}}>
             <DayCount label="申博" since={firstDate([...professors.map(p=>p.sentDate),...professors.flatMap(p=>(p.contacts||[]).map(c=>c.date)),...professors.map(p=>p.id),...applications.map(a=>a.id)])}/>
-            <StatList stats={[["已套磁",professors.filter(p=>p.status!=="pending").length],["有回复",professors.filter(p=>["replied","talked","success"].includes(p.status)).length],["网申中",applications.filter(a=>a.status==="submitted"||a.status==="review").length]]}/>
+            <div style={{display:"flex",gap:16}}>
+              <StatList stats={[["已套磁",professors.filter(p=>p.status!=="pending").length],["有回复",professors.filter(p=>["replied","talked","success"].includes(p.status)).length],["网申中",applications.filter(a=>a.status==="submitted"||a.status==="review").length]]}/>
+              <AccountButton onClick={()=>setAccountOpen(true)}/>
+            </div>
           </div>
           <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`,display:"flex",gap:20,alignItems:"flex-start"}}>
           <div style={{width:AGENDA_W,flexShrink:0}}>
@@ -1984,12 +2018,15 @@ function App(){
         <ActivityForm key={actModal&&actModal.id?actModal.id:"new"} initial={actModal==="add"?null:actModal} context="phd" applications={applications} onSave={saveAct} onCancel={closeActModal}/>
       </Modal>
       <Modal open={reminderOpen} onClose={()=>setReminderOpen(false)}>
-        <ReminderPanel events={reminderEvents} sync={reminderSync} resync={resyncReminders}/>
+        <ReminderPanel events={reminderEvents} sync={reminderSync} resync={resyncReminders} onOpenAccount={()=>{setReminderOpen(false);setAccountOpen(true);}}/>
+      </Modal>
+      <Modal open={accountOpen} onClose={()=>setAccountOpen(false)}>
+        <AccountPanel/>
       </Modal>
       <Modal open={inboxOpen} onClose={()=>setInboxOpen(false)}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <h3 style={{color:C.fir,fontSize:17}}>📥 收件箱</h3>
-          <button onClick={()=>setReminderOpen(true)} style={{background:"none",border:"none",color:C.textLight,fontSize:11,cursor:"pointer",textDecoration:"underline"}}>👤 账号</button>
+          <button onClick={()=>setAccountOpen(true)} style={{background:"none",border:"none",color:C.textLight,fontSize:11,cursor:"pointer",textDecoration:"underline"}}>👤 账号</button>
         </div>
         {inboxLoading&&<div style={{fontSize:12,color:C.textLight,textAlign:"center",padding:"12px 0"}}>加载中…</div>}
         {!inboxLoading&&inboxError&&<div style={{fontSize:12,color:"#b05050",textAlign:"center",padding:"12px 0"}}>{inboxError}</div>}

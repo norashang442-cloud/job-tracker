@@ -35,6 +35,18 @@ button:active:not(:disabled){transform:scale(0.95);}
 .collapsible{overflow:hidden;transition:max-height 0.22s cubic-bezier(0.4,0,0.2,1),opacity 0.18s ease;}
 .collapsible.open{max-height:600px;opacity:1;}
 .collapsible.closed{max-height:0;opacity:0;}
+
+/* Header / agenda layout, incl. narrow screens */
+.hdr{padding:12px 24px;}
+.tabscroll{overflow-x:auto;scrollbar-width:none;max-width:100%;}
+.tabscroll::-webkit-scrollbar{display:none;}
+.agenda-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+@media (max-width:640px){
+  .hdr{padding:10px 12px;}
+  .mtab{padding:6px 12px!important;font-size:13px!important;}
+  .hdr-actions button,.hdr-actions label{padding:7px 12px!important;font-size:13px!important;}
+  .agenda-grid{grid-template-columns:1fr;gap:12px;}
+}
 </style>
 </head>
 <body><div id="root"></div>
@@ -189,32 +201,93 @@ function useReminderSync(target,events){
     }catch{setSync({state:"error"});}
   };
   useEffect(()=>{const t=setTimeout(run,1500);return()=>clearTimeout(t);},[json]);
+  // 本地缓存一份，给另一个页面的日程卡片读
+  useEffect(()=>{try{localStorage.setItem("agenda_"+target,json)}catch{}},[json]);
   return [sync,run];
 }
 
-function DueBanner({events,onOpen}){
-  const today=todayStr();
-  const due=events.filter(e=>isDue(e,today)).sort((a,b)=>a.date.localeCompare(b.date));
-  if(!due.length) return null;
+const KIND_ICON={milestone:"📝",activity:"🎤",todo:"📌",deadline:"⏰",followup:"📮"};
+const weekday=d=>"日一二三四五六"[new Date(d+"T00:00:00").getDay()];
+
+// 秋招 / 申博切换：放在顶部栏最左边，表示「换一个工作区」，和本页的标签页分开
+function PageSwitch({current}){
+  const item=(key,href,label)=>key===current
+    ?<span style={{padding:"7px 16px",borderRadius:20,background:C.white,color:C.fir,fontSize:14,fontWeight:700,whiteSpace:"nowrap"}}>{label}</span>
+    :<a href={href} style={{padding:"7px 16px",borderRadius:20,color:C.mist,fontSize:14,fontWeight:600,textDecoration:"none",whiteSpace:"nowrap"}}
+        onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>{label}</a>;
   return(
-    <div onClick={onOpen} style={{background:"#FFF6E0",border:"1px solid #F0D9A0",borderRadius:12,padding:"10px 14px",marginBottom:16,cursor:"pointer"}}>
-      <div style={{fontWeight:700,fontSize:13,color:"#7A5A1F",marginBottom:4}}>🔔 今天要处理 {due.length} 件事</div>
-      {due.slice(0,6).map(e=>(
-        <div key={e.id} style={{fontSize:12,color:C.text,lineHeight:1.7}}>
-          <span style={{color:diffDays(today,e.date)<=0?"#c0392b":C.textLight,fontWeight:700}}>{dueLabel(e.date,today)}</span> · {e.title}{e.time?` ${e.time}`:""}{e.detail?<span style={{color:C.textLight}}> · {e.detail}</span>:null}
-        </div>
-      ))}
-      {due.length>6&&<div style={{fontSize:12,color:C.textLight}}>…还有 {due.length-6} 件</div>}
+    <div style={{display:"flex",gap:2,background:"rgba(0,0,0,0.22)",borderRadius:24,padding:3}}>
+      {item("job","index.html","📋 秋招")}
+      {item("phd","phd.html","🎓 申博")}
     </div>
   );
 }
 
-function ReminderPanel({events,sync,resync}){
-  const today=todayStr();
+// 主界面日程：本页事项正常显示、点击打开对应记录；另一边的事项读它最近一次保存的本地缓存，
+// 只淡淡显示「这段时间被占了」，不展开细节、不可点。
+function AgendaCard({events,target,onOpen}){
+  const other=target==="job"?"phd":"job";
+  const otherLabel=other==="job"?"秋招":"申博";
+  const [open,setOpen]=useState(()=>{try{return localStorage.getItem("agenda_open")!=="0"}catch{return true}});
+  const toggle=()=>setOpen(v=>{try{localStorage.setItem("agenda_open",v?"0":"1")}catch{} return !v;});
+  const today=todayStr(),tomorrow=addDays(today,1),week=addDays(today,7);
+  let otherEvents=[];
+  try{otherEvents=JSON.parse(localStorage.getItem("agenda_"+other)||"[]")}catch{}
+  const all=[...events.map(e=>({...e,mine:true})),...otherEvents.map(e=>({...e,mine:false}))]
+    .sort((a,b)=>(a.date+(a.time||"99")).localeCompare(b.date+(b.time||"99")));
+  // 另一边逾期的待办不占用具体时间段，只显示本页自己的
+  const near=all.filter(e=>e.date===today||e.date===tomorrow||(e.mine&&e.repeatUntilDone&&e.date<today));
+  const later=all.filter(e=>e.date>tomorrow&&e.date<=week);
+  const mineCount=list=>list.filter(e=>e.mine).length;
+  const row=(e,nearCol)=>{
+    const when=nearCol?(e.date<today?`逾期 ${diffDays(e.date,today)} 天`:e.date===today?"今天":"明天"):`${e.date.slice(5)} 周${weekday(e.date)}`;
+    const time=e.time?` ${e.time}${e.endTime?`–${e.endTime}`:""}`:"";
+    if(!e.mine) return(
+      <div key={"o-"+e.id} style={{display:"flex",gap:8,fontSize:11,color:C.mist,padding:"3px 0"}}>
+        <span style={{width:70,flexShrink:0}}>{when}</span>
+        <span style={{wordBreak:"break-word"}}><span style={{border:`1px solid ${C.border}`,borderRadius:4,padding:"0 4px",marginRight:5}}>{otherLabel}</span>{e.title}{time}</span>
+      </div>
+    );
+    const hot=e.date<=today;
+    return(
+      <div key={e.id} onClick={()=>onOpen(e)} title="点击打开" style={{display:"flex",gap:8,fontSize:13,padding:"5px 6px",margin:"0 -6px",borderRadius:7,cursor:"pointer"}}
+        onMouseOver={ev=>ev.currentTarget.style.background=C.cream} onMouseOut={ev=>ev.currentTarget.style.background="transparent"}>
+        <span style={{width:70,flexShrink:0,fontSize:12,fontWeight:700,color:hot?"#c0392b":C.textLight}}>{when}</span>
+        <span style={{color:C.text,wordBreak:"break-word"}}>
+          {KIND_ICON[e.kind]||"•"} {e.title}<span style={{color:C.sage,fontWeight:600}}>{time}</span>
+          {e.detail&&<span style={{color:C.textLight,fontSize:12}}> · {e.detail}</span>}
+        </span>
+      </div>
+    );
+  };
+  const col=(title,list,nearCol,empty)=>(
+    <div>
+      <div style={{fontSize:12,fontWeight:700,color:C.moss,marginBottom:6}}>{title}</div>
+      {list.length?list.map(e=>row(e,nearCol)):<div style={{fontSize:12,color:C.mist}}>{empty}</div>}
+    </div>
+  );
+  return(
+    <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 16px",marginBottom:18,boxShadow:`0 2px 10px ${C.shadow}`}}>
+      <div onClick={toggle} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,cursor:"pointer"}}>
+        <span style={{fontWeight:700,fontSize:14,color:C.fir}}>🗓 日程
+          {!open&&<span style={{fontWeight:400,fontSize:12,color:C.textLight,marginLeft:10}}>今天/明天 {mineCount(near)} 件 · 未来 7 天 {mineCount(later)} 件</span>}
+        </span>
+        <span style={{fontSize:12,color:C.mist,whiteSpace:"nowrap"}}>{open?"收起 ▲":"展开 ▼"}</span>
+      </div>
+      {open&&(
+        <div className="agenda-grid" style={{marginTop:10}}>
+          {col("今天 / 明天",near,true,"今明两天没有安排")}
+          {col("未来 7 天",later,false,"未来一周没有安排")}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReminderPanel({sync,resync}){
   const [msg,setMsg]=useState("");
   const [copied,setCopied]=useState(false);
   const key=getKey();
-  const upcoming=events.filter(e=>isDue(e,today)||(e.date>=today&&diffDays(today,e.date)<=14)).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
   const calUrl=`webcal://${location.host}/api/calendar?key=${encodeURIComponent(key)}`;
   const setKey=()=>{const k=prompt("请输入收件箱密钥（部署时在 Vercel 环境变量 INBOX_SECRET 里设置的值）");if(k){localStorage.setItem("jt4_inbox_key",k);resync();}};
   const sendTest=async()=>{
@@ -232,21 +305,13 @@ function ReminderPanel({events,sync,resync}){
   const section={fontSize:13,fontWeight:700,color:C.moss,margin:"18px 0 8px"};
   return(
     <div>
-      <h3 style={{color:C.fir,fontSize:17,marginBottom:10}}>🔔 提醒</h3>
+      <h3 style={{color:C.fir,fontSize:17,marginBottom:10}}>⚙️ 提醒设置</h3>
       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",fontSize:12,color:sync.state==="ok"?C.sage:C.textLight}}>
         <span style={{flex:1}}>{syncText}</span>
         <button onClick={setKey} style={smallBtn}>{key?"重设密钥":"设置密钥"}</button>
         {key&&<button onClick={resync} style={smallBtn}>立即同步</button>}
       </div>
 
-      <div style={section}>近两周（本页）</div>
-      {upcoming.length===0&&<div style={{fontSize:12,color:C.mist}}>未来两周没有提醒</div>}
-      {upcoming.map(e=>(
-        <div key={e.id} style={{display:"flex",gap:10,fontSize:12,padding:"5px 0",borderBottom:`1px solid ${C.frost}`}}>
-          <span style={{width:74,flexShrink:0,fontWeight:700,color:isDue(e,today)?"#c0392b":C.textLight}}>{dueLabel(e.date,today)}</span>
-          <span style={{color:C.text,wordBreak:"break-word"}}>{e.title}{e.time?` ${e.time}`:""}{e.detail?<span style={{color:C.textLight}}> · {e.detail}</span>:null}</span>
-        </div>
-      ))}
 
       {key&&<>
         <div style={section}>📧 每日邮件</div>
@@ -1181,7 +1246,6 @@ function App(){
   const [reminderOpen,setReminderOpen]=useState(false);
   const reminderEvents=[...buildJobEvents(jobs,toApply,todayStr()),...buildActivityEvents(acts,todayStr())];
   const [reminderSync,resyncReminders]=useReminderSync("job",reminderEvents);
-  const dueCount=reminderEvents.filter(e=>isDue(e,todayStr())).length;
 
   // Match the item's company name against followed companies; optionally create one if none matches.
   const linkCompany=(item,addCompany,extra={})=>{
@@ -1432,65 +1496,69 @@ function App(){
     setConvertingId(null);
   };
 
-  const mainTabBtn=active=>({padding:"8px 20px",borderRadius:20,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,background:active?C.white:C.fir,color:active?C.fir:C.mist,transition:"all 0.2s",boxShadow:active?"0 2px 8px rgba(47,69,56,0.15)":"none"});
+  // 日程卡片点击：按提醒条目的 id 找回对应记录并打开编辑
+  const openFromAgenda=e=>{
+    const [kind,id]=e.id.split("-");
+    const nid=Number(id);
+    if(kind==="job"){const j=jobs.find(x=>x.id===nid);if(j){setMainTab("tracker");setModal(j);}}
+    else if(kind==="ta"){const t=toApply.find(x=>x.id===nid);if(t){setMainTab("toApply");setTaModal(t);}}
+    else if(kind==="act"){const a=acts.find(x=>x.id===nid);if(a){setMainTab("events");setActModal(a);}}
+  };
+  const mainTabBtn=active=>({padding:"8px 20px",borderRadius:20,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,background:active?C.white:C.fir,color:active?C.fir:C.mist,transition:"all 0.2s",whiteSpace:"nowrap",boxShadow:active?"0 2px 8px rgba(0,0,0,0.15)":"none"});
 
   return(
     <div style={{minHeight:"100vh",background:C.cream}}>
-      <div style={{background:C.fir,padding:"16px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-        <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-          <div style={{display:"flex",flexDirection:"column",gap:2}}>
-            <div style={{color:C.frost,fontSize:18,fontWeight:700,letterSpacing:0.5}}>求职进度追踪</div>
-            <div style={{color:C.mist,fontSize:11}}>Job Application Tracker</div>
+      <div className="hdr" style={{background:C.fir,display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+          <PageSwitch current="job"/>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={toggleInbox} style={{background:"transparent",color:C.mist,border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
+              📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""}
+            </button>
+            <button onClick={()=>setReminderOpen(true)} style={{background:"transparent",color:C.mist,border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>⚙️ 提醒设置</button>
           </div>
-          <a href="phd.html" style={{color:C.mist,fontSize:12,textDecoration:"none",border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",whiteSpace:"nowrap"}}
-            onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>🎓 申博追踪</a>
-          <button onClick={toggleInbox} style={{background:"transparent",color:C.mist,border:`1px solid ${C.reed}`,borderRadius:20,padding:"6px 14px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
-            📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""}
-          </button>
-          <button onClick={()=>setReminderOpen(true)} style={{background:dueCount?"#C0392B":"transparent",color:dueCount?C.white:C.mist,border:`1px solid ${dueCount?"#C0392B":C.reed}`,borderRadius:20,padding:"6px 14px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
-            🔔 提醒{dueCount>0?` (${dueCount})`:""}
-          </button>
         </div>
-        <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4}}>
-          <button style={mainTabBtn(mainTab==="companies")} onClick={()=>setMainTab("companies")}>
-            🏢 公司关注
-            {companies.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{companies.length}</span>}
-          </button>
-          <span style={{color:C.mist,fontSize:14,alignSelf:"center",padding:"0 2px"}}>›</span>
-          <button style={mainTabBtn(mainTab==="toApply")} onClick={()=>setMainTab("toApply")}>
-            📌 待投岗位
-            {toApply.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{toApply.length}</span>}
-          </button>
-          <span style={{color:C.mist,fontSize:14,alignSelf:"center",padding:"0 2px"}}>›</span>
-          <button style={mainTabBtn(mainTab==="tracker")} onClick={()=>setMainTab("tracker")}>📋 投递追踪</button>
-          <span style={{width:1,background:"rgba(255,255,255,0.18)",margin:"4px 4px"}}/>
-          <button style={mainTabBtn(mainTab==="events")} onClick={()=>setMainTab("events")}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+          <div className="tabscroll" style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4,flexShrink:0}}>
+              <button className="mtab" style={mainTabBtn(mainTab==="companies")} onClick={()=>setMainTab("companies")}>
+                🏢 公司关注
+                {companies.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{companies.length}</span>}
+              </button>
+              <span style={{color:C.mist,fontSize:14,alignSelf:"center",padding:"0 2px"}}>›</span>
+              <button className="mtab" style={mainTabBtn(mainTab==="toApply")} onClick={()=>setMainTab("toApply")}>
+                📌 待投岗位
+                {toApply.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{toApply.length}</span>}
+              </button>
+              <span style={{color:C.mist,fontSize:14,alignSelf:"center",padding:"0 2px"}}>›</span>
+              <button className="mtab" style={mainTabBtn(mainTab==="tracker")} onClick={()=>setMainTab("tracker")}>
+                📋 投递追踪
+                
+              </button>
+            </div>
+            <span style={{width:1,alignSelf:"stretch",background:"rgba(255,255,255,0.22)",margin:"6px 2px",flexShrink:0}}/>
+          <button className="mtab" style={{...mainTabBtn(mainTab==="events"),flexShrink:0,...(mainTab==="events"?{}:{background:"transparent",border:`1px solid ${C.reed}`})}} onClick={()=>setMainTab("events")}>
             📅 活动
             {acts.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{acts.length}</span>}
           </button>
-        </div>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          {mainTab==="events"&&
-            <button onClick={()=>setActModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加活动</button>
-          }
-          {mainTab==="tracker"&&<>
-            <button onClick={()=>setModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加投递</button>
-            <button onClick={exportData} style={{background:"transparent",color:C.frost,border:`1px solid ${C.reed}`,borderRadius:10,padding:"9px 14px",cursor:"pointer",fontSize:13}}>⬇ 导出</button>
-            <label style={{background:"transparent",color:C.frost,border:`1px solid ${C.reed}`,borderRadius:10,padding:"9px 14px",cursor:"pointer",fontSize:13}}>
-              ⬆ 导入<input type="file" accept=".json" onChange={importData} style={{display:"none"}}/>
-            </label>
-          </>}
-          {mainTab==="toApply"&&
-            <button onClick={()=>setTaModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加待投递</button>
-          }
-          {mainTab==="companies"&&
-            <button onClick={()=>setCModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加关注公司</button>
-          }
+          </div>
+          <div className="hdr-actions" style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            {mainTab==="events"&&<button onClick={()=>setActModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14,whiteSpace:"nowrap"}}>＋ 添加活动</button>}
+            {mainTab==="tracker"&&<>
+              <button onClick={()=>setModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14,whiteSpace:"nowrap"}}>＋ 添加投递</button>
+              <button onClick={exportData} style={{background:"transparent",color:C.frost,border:`1px solid ${C.reed}`,borderRadius:10,padding:"9px 14px",cursor:"pointer",fontSize:13,whiteSpace:"nowrap"}}>⬇ 导出</button>
+              <label style={{background:"transparent",color:C.frost,border:`1px solid ${C.reed}`,borderRadius:10,padding:"9px 14px",cursor:"pointer",fontSize:13,whiteSpace:"nowrap"}}>
+                ⬆ 导入<input type="file" accept=".json" onChange={importData} style={{display:"none"}}/>
+              </label>
+            </>}
+            {mainTab==="toApply"&&<button onClick={()=>setTaModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14,whiteSpace:"nowrap"}}>＋ 添加待投递</button>}
+            {mainTab==="companies"&&<button onClick={()=>setCModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14,whiteSpace:"nowrap"}}>＋ 添加关注公司</button>}
+          </div>
         </div>
       </div>
 
       <div style={{maxWidth:1120,margin:"0 auto",padding:"20px 14px"}}>
-        <DueBanner events={reminderEvents} onOpen={()=>setReminderOpen(true)}/>
+        <AgendaCard events={reminderEvents} target="job" onOpen={openFromAgenda}/>
 
         {mainTab==="companies"&&(
           <div className="tab-content">

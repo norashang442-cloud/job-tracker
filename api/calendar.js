@@ -1,16 +1,4 @@
-async function kv(cmd) {
-  const res = await fetch(process.env.KV_REST_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(cmd),
-  });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return data.result;
-}
+import { kv, keyFor, resolveCalendarUser } from "./_lib.js";
 
 const diffDays = (a, b) => Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 86400000);
 const icsEscape = s => String(s || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
@@ -77,8 +65,11 @@ function buildEvent(e, dtstamp) {
 
 export default async function handler(req, res) {
   // vercel.json rewrites /api/calendar/<key>.ics here — new Outlook won't subscribe to the ?key= form.
+  // The key is the user's calendar token (or the owner's legacy INBOX_SECRET), never their login session.
   const key = req.query.key;
-  if (!key || key !== process.env.INBOX_SECRET) return res.status(401).send("Unauthorized");
+  let user;
+  try { user = await resolveCalendarUser(key); } catch (err) { return res.status(500).send("Failed: " + err.message); }
+  if (!user) return res.status(401).send("Unauthorized");
 
   // Gmail strips webcal:// links from emails, so the email links here (https) and this page hands off to webcal://.
   if (req.query.subscribe === "1") {
@@ -97,7 +88,7 @@ export default async function handler(req, res) {
 
   try {
     // One round trip: Outlook's fetcher gives up quickly on slow feeds.
-    const events = (await kv(["MGET", "reminders_job", "reminders_phd"]) || [])
+    const events = (await kv(["MGET", keyFor(user, "reminders_job"), keyFor(user, "reminders_phd")]) || [])
       .flatMap(raw => (raw ? JSON.parse(raw).events || [] : []));
     const dtstamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
     const lines = [

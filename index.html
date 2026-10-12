@@ -198,6 +198,73 @@ const isDue=(e,today)=>e.remindOn.includes(today)||(e.repeatUntilDone&&today>=e.
 const dueLabel=(date,today)=>{const d=diffDays(today,date);return d===0?"今天":d===1?"明天":d>1?`还有 ${d} 天`:`已逾期 ${-d} 天`;};
 const getKey=()=>{try{return localStorage.getItem("jt4_inbox_key")||""}catch{return ""}};
 
+// ---------- 账号：邀请码注册 + 用户名密码登录，与 index.html / phd.html 保持一致 ----------
+// 登录后服务器发的令牌和旧的收件箱密钥存在同一个位置（jt4_inbox_key），所有云端接口都靠它认人。
+const setKey=k=>{try{k?localStorage.setItem("jt4_inbox_key",k):localStorage.removeItem("jt4_inbox_key")}catch{}};
+async function accountCall(action,payload={}){
+  const res=await fetch("/api/account",{method:"POST",headers:{"Content-Type":"application/json","X-Inbox-Key":getKey()},body:JSON.stringify({action,...payload})});
+  const d=await res.json().catch(()=>({}));
+  if(!res.ok){const e=new Error(d.error||"请求失败，检查网络");e.status=res.status;throw e;}
+  return d;
+}
+function AccountBox({me,onAuth,smallBtn}){
+  const [mode,setMode]=useState("login");
+  const [f,setF]=useState({username:"",password:"",code:""});
+  const [err,setErr]=useState("");
+  const [busy,setBusy]=useState(false);
+  if(me) return(
+    <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:C.text}}>
+      <span style={{flex:1}}>👤 <b>{me.name}</b>{me.owner&&<span style={{color:C.textLight,fontSize:12}}> · 站长</span>}{me.legacy&&<span style={{color:C.textLight,fontSize:12}}> · 正在用旧密钥，建议退出后登录账号</span>}</span>
+      <button onClick={async()=>{try{await accountCall("logout")}catch{} onAuth("");}} style={smallBtn}>退出</button>
+    </div>
+  );
+  const submit=async e=>{
+    e.preventDefault();setBusy(true);setErr("");
+    try{const d=await accountCall(mode,f);onAuth(d.token);}catch(x){setErr(x.message);}
+    setBusy(false);
+  };
+  const tab=on=>({...smallBtn,...(on?{background:C.sage,color:C.white,border:"none"}:{})});
+  return(
+    <form onSubmit={submit} style={{background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:12}}>
+      <div style={{display:"flex",gap:6,marginBottom:10}}>
+        <button type="button" onClick={()=>setMode("login")} style={tab(mode==="login")}>登录</button>
+        <button type="button" onClick={()=>setMode("register")} style={tab(mode==="register")}>用邀请码注册</button>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        <input value={f.username} onChange={e=>setF({...f,username:e.target.value})} placeholder="用户名" autoComplete="username" style={{...inp,background:C.white}}/>
+        <input type="password" value={f.password} onChange={e=>setF({...f,password:e.target.value})} placeholder={mode==="register"?"密码（至少 6 位）":"密码"} autoComplete={mode==="register"?"new-password":"current-password"} style={{...inp,background:C.white}}/>
+        {mode==="register"&&<input value={f.code} onChange={e=>setF({...f,code:e.target.value})} placeholder="邀请码（向站长要）" autoComplete="off" style={{...inp,background:C.white}}/>}
+        <button type="submit" disabled={busy} style={{...smallBtn,background:C.sage,color:C.white,border:"none",padding:"8px 12px"}}>{busy?"请稍候…":mode==="login"?"登录":"注册并登录"}</button>
+        {err&&<div style={{fontSize:12,color:"#b05050"}}>⚠️ {err}</div>}
+      </div>
+      <div style={{fontSize:11,color:C.textLight,lineHeight:1.6,marginTop:8}}>登录后才能用收件箱、提醒邮件和日历订阅。投递 / 套磁记录仍然只存在这个浏览器里，不会上传。</div>
+    </form>
+  );
+}
+// 站长：生成 / 作废邀请码，看有哪些用户
+function AdminBox({smallBtn}){
+  const [data,setData]=useState(null);
+  const [msg,setMsg]=useState("");
+  const load=()=>accountCall("admin-list").then(setData).catch(e=>setMsg("⚠️ "+e.message));
+  const create=async()=>{try{const {code}=await accountCall("invite-create");setMsg(`新邀请码：${code}（每个只能用一次）`);load();}catch(e){setMsg("⚠️ "+e.message);}};
+  const del=async code=>{try{await accountCall("invite-delete",{code});load();}catch(e){setMsg("⚠️ "+e.message);}};
+  return(
+    <details onToggle={e=>e.target.open&&!data&&load()} style={{marginTop:10,fontSize:12,color:C.textLight}}>
+      <summary style={{cursor:"pointer"}}>🔑 站长：邀请码与用户</summary>
+      <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <button onClick={create} style={smallBtn}>生成邀请码</button>
+          {msg&&<span style={{color:msg.startsWith("⚠️")?"#b05050":C.sage,userSelect:"all"}}>{msg}</span>}
+        </div>
+        {data&&<>
+          <div>未使用的邀请码：{data.invites.length?data.invites.map(c=><span key={c} style={{display:"inline-flex",gap:4,alignItems:"center",marginRight:10}}><code style={{userSelect:"all"}}>{c}</code><span onClick={()=>del(c)} title="作废" style={{cursor:"pointer",color:"#b05050"}}>×</span></span>):"无"}</div>
+          <div>用户（{data.users.length}）：{data.users.join("、")||"无"}</div>
+        </>}
+      </div>
+    </details>
+  );
+}
+
 // ---------- 备份：导出 / 导入本页全部数据，与 index.html / phd.html 保持一致 ----------
 const BACKUP_NAME={job:"秋招",phd:"申博"};
 function downloadBackup(page,data){
@@ -578,11 +645,18 @@ function AgendaPanel({events,target,onOpen}){
 function ReminderPanel({sync,resync}){
   const [msg,setMsg]=useState("");
   const [copied,setCopied]=useState(false);
-  const key=getKey();
-  const calPath=`${location.host}/api/calendar/${encodeURIComponent(key)}.ics`;
+  const [key,setKeyState]=useState(getKey);
+  const [me,setMe]=useState(null);
+  useEffect(()=>{
+    if(!key){setMe(null);return;}
+    accountCall("me").then(d=>setMe(d.user)).catch(()=>setMe(null));
+  },[key]);
+  const onAuth=k=>{setKey(k);setKeyState(k);resync();};
+  // 日历用单独的日历令牌；旧密钥登录时没有令牌，就沿用旧密钥
+  const calToken=me?.calToken||(me?.legacy?key:"");
+  const calPath=`${location.host}/api/calendar/${encodeURIComponent(calToken)}.ics`;
   const [calTab,setCalTab]=useState("ios");
   const calUrl=calTab==="ios"?`webcal://${calPath}`:`https://${calPath}`;
-  const setKey=()=>{const k=prompt("请输入收件箱密钥（部署时在 Vercel 环境变量 INBOX_SECRET 里设置的值）");if(k){localStorage.setItem("jt4_inbox_key",k);resync();}};
   const sendTest=async()=>{
     setMsg("发送中…");
     try{
@@ -593,20 +667,21 @@ function ReminderPanel({sync,resync}){
     }catch{setMsg("⚠️ 发送失败，检查网络");}
   };
   const copy=()=>navigator.clipboard?.writeText(calUrl).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1500);});
-  const syncText={idle:"",syncing:"同步中…",ok:`✅ 已同步到云端（本页 ${sync.count} 条提醒）`,nokey:"⚠️ 还没设置密钥，提醒不会同步到云端",badkey:"⚠️ 密钥错误，请重设",error:"⚠️ 同步失败，检查网络"}[sync.state];
+  const syncText={idle:"",syncing:"同步中…",ok:`✅ 已同步到云端（本页 ${sync.count} 条提醒）`,nokey:"还没登录，提醒不会同步到云端",badkey:"⚠️ 登录已失效，请重新登录",error:"⚠️ 同步失败，检查网络"}[sync.state];
   const smallBtn={padding:"5px 12px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:12,cursor:"pointer",textDecoration:"none",whiteSpace:"nowrap"};
   const section={fontSize:13,fontWeight:700,color:C.moss,margin:"18px 0 8px"};
   return(
     <div>
-      <h3 style={{color:C.fir,fontSize:17,marginBottom:10}}>⚙️ 提醒设置</h3>
-      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",fontSize:12,color:sync.state==="ok"?C.sage:C.textLight}}>
+      <h3 style={{color:C.fir,fontSize:17,marginBottom:10}}>⚙️ 账号与提醒</h3>
+      <AccountBox me={me} onAuth={onAuth} smallBtn={smallBtn}/>
+      {me?.owner&&<AdminBox smallBtn={smallBtn}/>}
+      {me&&<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",fontSize:12,marginTop:10,color:sync.state==="ok"?C.sage:C.textLight}}>
         <span style={{flex:1}}>{syncText}</span>
-        <button onClick={setKey} style={smallBtn}>{key?"重设密钥":"设置密钥"}</button>
-        {key&&<button onClick={resync} style={smallBtn}>立即同步</button>}
-      </div>
+        <button onClick={resync} style={smallBtn}>立即同步</button>
+      </div>}
 
 
-      {key&&<>
+      {me&&<>
         <div style={section}>📧 每日邮件</div>
         <div style={{fontSize:12,color:C.textLight,lineHeight:1.6,marginBottom:8}}>每天早上 8 点（北京时间）检查一次，有到期事项才发信。待投岗位的「提醒我」和套磁跟进到期后会每天重复提醒，直到你处理。</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
@@ -1636,11 +1711,8 @@ function App(){
   const closeActModal=()=>{setActModal(null);setConvertingInboxId(null);};
 
   const getInboxKey=()=>{
-    let key=localStorage.getItem("jt4_inbox_key")||"";
-    if(!key){
-      key=prompt("请输入收件箱密钥（部署时在 Vercel 环境变量 INBOX_SECRET 里设置的值）")||"";
-      if(key) localStorage.setItem("jt4_inbox_key",key);
-    }
+    const key=getKey();
+    if(!key) setInboxError("还没登录：点右边「👤 账号」登录或注册");
     return key;
   };
   const extractForItem=async item=>{
@@ -1664,7 +1736,7 @@ function App(){
     setInboxLoading(true); setInboxError("");
     try{
       const res=await fetch("/api/inbox-list",{headers:{"X-Inbox-Key":key}});
-      if(res.status===401){ setInboxError("⚠️ 密钥错误，点右边「重设密钥」重新输入"); setInboxLoading(false); return; }
+      if(res.status===401){ setInboxError("⚠️ 登录已失效，点右边「👤 账号」重新登录"); setInboxLoading(false); return; }
       const data=await res.json();
       if(!res.ok) throw new Error(data.error||"failed");
       const items=data.items||[];
@@ -1680,11 +1752,6 @@ function App(){
     const next=!inboxOpen;
     setInboxOpen(next);
     if(next) fetchInbox();
-  };
-  const resetInboxKey=()=>{
-    localStorage.removeItem("jt4_inbox_key");
-    setInboxError("");
-    fetchInbox();
   };
   const deleteInboxItem=async id=>{
     const key=getInboxKey();
@@ -2070,7 +2137,7 @@ function App(){
       <Modal open={inboxOpen} onClose={()=>setInboxOpen(false)}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <h3 style={{color:C.fir,fontSize:17}}>📥 收件箱</h3>
-          <button onClick={resetInboxKey} style={{background:"none",border:"none",color:C.textLight,fontSize:11,cursor:"pointer",textDecoration:"underline"}}>🔑 重设密钥</button>
+          <button onClick={()=>setReminderOpen(true)} style={{background:"none",border:"none",color:C.textLight,fontSize:11,cursor:"pointer",textDecoration:"underline"}}>👤 账号</button>
         </div>
         {inboxLoading&&<div style={{fontSize:12,color:C.textLight,textAlign:"center",padding:"12px 0"}}>加载中…</div>}
         {!inboxLoading&&inboxError&&<div style={{fontSize:12,color:"#b05050",textAlign:"center",padding:"12px 0"}}>{inboxError}</div>}

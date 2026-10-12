@@ -1,24 +1,16 @@
-async function kv(cmd) {
-  const res = await fetch(process.env.KV_REST_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(cmd),
-  });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return data.result;
+import { kv, keyFor, getUser, resolveUser } from "./_lib.js";
+
+async function loadEvents(user) {
+  const raws = await kv(["MGET", keyFor(user, "reminders_job"), keyFor(user, "reminders_phd")]) || [];
+  return raws.flatMap(raw => (raw ? JSON.parse(raw).events || [] : []));
 }
 
-async function loadEvents() {
-  const out = [];
-  for (const k of ["reminders_job", "reminders_phd"]) {
-    const raw = await kv(["GET", k]);
-    if (raw) out.push(...(JSON.parse(raw).events || []));
-  }
-  return out;
+// Subscribe link for the email footer: the user's calendar token, or the legacy secret for an owner who hasn't registered yet.
+async function calendarToken(user) {
+  if (user.calToken) return user.calToken;
+  const ownerName = user.owner && (await kv(["GET", "owner_user"]));
+  const owner = ownerName && (await getUser(ownerName));
+  return owner?.calToken || process.env.INBOX_SECRET || "";
 }
 
 const TZ = process.env.REMIND_TZ || "Asia/Shanghai";
@@ -84,17 +76,18 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   const cronOk = process.env.CRON_SECRET && req.headers.authorization === `Bearer ${process.env.CRON_SECRET}`;
-  const key = req.headers["x-inbox-key"] || req.query.key;
-  if (!cronOk && (!key || key !== process.env.INBOX_SECRET)) return res.status(401).json({ error: "Unauthorized" });
-
   const today = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || "") ? req.query.date : todayIn(TZ);
   const dry = req.query.dry === "1";
   const test = req.query.test === "1";
   const siteUrl = process.env.SITE_URL || `https://${req.headers["x-forwarded-host"] || req.headers.host}`;
-  const calendarUrl = `${siteUrl}/api/calendar?subscribe=1&key=${encodeURIComponent(process.env.INBOX_SECRET || "")}`;
 
   try {
-    const due = (await loadEvents()).filter(e => isDue(e, today));
+    // The cron run still mails only the owner, through the env-configured Resend account.
+    const user = cronOk ? { owner: true } : await resolveUser(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!user.owner && !dry) return res.status(400).json({ error: "邮件提醒还没对其他账号开放，敬请期待" });
+    const calendarUrl = `${siteUrl}/api/calendar?subscribe=1&key=${encodeURIComponent(await calendarToken(user))}`;
+    const due = (await loadEvents(user)).filter(e => isDue(e, today));
     const { subject, html } = buildEmail(due, today, siteUrl, calendarUrl);
 
     if (dry) {

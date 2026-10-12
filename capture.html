@@ -44,9 +44,11 @@ button:disabled{background:#A8C5A0;}
 <button id="submitBtn">存进收件箱</button>
 <div class="msg" id="msg"></div>
 <details class="keybox" id="keybox">
-  <summary>设置密钥</summary>
-  <input id="keyInput" type="text" placeholder="首次使用需要输入密钥" autocomplete="off"/>
-  <button id="saveKeyBtn">保存密钥</button>
+  <summary id="keySummary">登录</summary>
+  <input id="userInput" type="text" placeholder="用户名" autocomplete="username" autocapitalize="off"/>
+  <input id="passInput" type="password" placeholder="密码" autocomplete="current-password"/>
+  <button id="loginBtn">登录</button>
+  <button id="logoutBtn" style="display:none">退出登录</button>
 </details>
 <script>
 const KEY_STORAGE = "jt_inbox_key";
@@ -54,8 +56,6 @@ const TARGET_STORAGE = "jt_inbox_target";
 const contentEl = document.getElementById("content");
 const submitBtn = document.getElementById("submitBtn");
 const msgEl = document.getElementById("msg");
-const keyInput = document.getElementById("keyInput");
-const saveKeyBtn = document.getElementById("saveKeyBtn");
 const targetJobBtn = document.getElementById("targetJob");
 const targetPhdBtn = document.getElementById("targetPhd");
 
@@ -83,11 +83,39 @@ renderKind();
 kindInfoBtn.onclick = () => { kind = "info"; renderKind(); };
 kindEventBtn.onclick = () => { kind = "event"; renderKind(); };
 
-keyInput.value = localStorage.getItem(KEY_STORAGE) || "";
-saveKeyBtn.onclick = () => {
-  localStorage.setItem(KEY_STORAGE, keyInput.value.trim());
-  msgEl.textContent = "✅ 密钥已保存";
-  msgEl.className = "msg ok";
+// 登录拿到的令牌存在原来放密钥的位置；以前存的旧密钥照样能用
+const keySummary = document.getElementById("keySummary");
+const logoutBtn = document.getElementById("logoutBtn");
+const renderLogin = () => {
+  const name = localStorage.getItem("jt_inbox_user");
+  const has = !!localStorage.getItem(KEY_STORAGE);
+  keySummary.textContent = has ? `已登录${name ? "：" + name : ""}` : "登录（注册请在电脑上用邀请码）";
+  logoutBtn.style.display = has ? "" : "none";
+};
+renderLogin();
+const say = (text, cls) => { msgEl.textContent = text; msgEl.className = "msg " + cls; };
+document.getElementById("loginBtn").onclick = async () => {
+  const username = document.getElementById("userInput").value.trim();
+  const password = document.getElementById("passInput").value;
+  if (!username || !password) return say("⚠️ 请填写用户名和密码", "err");
+  say("登录中…", "");
+  try {
+    const res = await fetch("/api/account", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "login", username, password }) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || "登录失败");
+    localStorage.setItem(KEY_STORAGE, d.token);
+    localStorage.setItem("jt_inbox_user", d.user.name);
+    document.getElementById("passInput").value = "";
+    document.getElementById("keybox").open = false;
+    renderLogin();
+    say("✅ 已登录", "ok");
+  } catch (err) { say("⚠️ " + err.message, "err"); }
+};
+logoutBtn.onclick = () => {
+  localStorage.removeItem(KEY_STORAGE);
+  localStorage.removeItem("jt_inbox_user");
+  renderLogin();
+  say("已退出", "");
 };
 
 submitBtn.onclick = async () => {
@@ -95,7 +123,8 @@ submitBtn.onclick = async () => {
   const key = localStorage.getItem(KEY_STORAGE) || "";
   if (!content) return;
   if (!key) {
-    msgEl.textContent = "⚠️ 请先展开下面「设置密钥」填写";
+    document.getElementById("keybox").open = true;
+    msgEl.textContent = "⚠️ 请先在下面登录";
     msgEl.className = "msg err";
     return;
   }
@@ -110,7 +139,7 @@ submitBtn.onclick = async () => {
     });
     if (res.status === 401) {
       document.getElementById("keybox").open = true;
-      throw new Error("密钥错误");
+      throw new Error("未登录");
     }
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "failed");
@@ -118,7 +147,7 @@ submitBtn.onclick = async () => {
     msgEl.textContent = kind === "event" ? "✅ 活动已存入收件箱" : "✅ 已存入收件箱";
     msgEl.className = "msg ok";
   } catch (err) {
-    msgEl.textContent = err.message === "密钥错误" ? "⚠️ 密钥错误，请在下方重新填写" : "⚠️ 保存失败，检查网络";
+    msgEl.textContent = err.message === "未登录" ? "⚠️ 登录已失效，请在下方重新登录" : "⚠️ 保存失败，检查网络";
     msgEl.className = "msg err";
   }
   submitBtn.disabled = false;

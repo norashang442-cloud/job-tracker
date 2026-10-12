@@ -49,10 +49,11 @@ button:active:not(:disabled){transform:scale(0.95);}
 }
 
 /* Top panel: dark nav row + light info row, three aligned columns */
-.top-grid{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:1fr 1.25fr 1fr;}
+/* 左栏、中栏按内容定宽（名字+切换开关、三个流程标签），剩下的宽度都给右栏的日程 */
+.top-grid{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:370px 400px minmax(0,1fr);}
 .top-cell{padding:14px 20px;min-width:0;}
 .top-div-dark{border-left:1px solid rgba(255,255,255,0.16);}
-@media (max-width:900px){
+@media (max-width:1100px){
   .top-grid{grid-template-columns:1fr;}
   .top-div-dark,.top-div-light{border-left:none!important;}
   .top-cell{padding:10px 14px;}
@@ -1598,7 +1599,7 @@ function App(){
     else if(kind==="ta"){const t=toApply.find(x=>x.id===nid);if(t){setMainTab("toApply");setTaModal(t);}}
     else if(kind==="act"){const a=acts.find(x=>x.id===nid);if(a){setMainTab("events");setActModal(a);}}
   };
-  const mainTabBtn=active=>({padding:"8px 20px",borderRadius:20,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,background:active?C.white:C.fir,color:active?C.fir:C.mist,transition:"all 0.2s",whiteSpace:"nowrap",boxShadow:active?"0 2px 8px rgba(0,0,0,0.15)":"none"});
+  const mainTabBtn=active=>({padding:"8px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,background:active?C.white:C.fir,color:active?C.fir:C.mist,transition:"all 0.2s",whiteSpace:"nowrap",boxShadow:active?"0 2px 8px rgba(0,0,0,0.15)":"none"});
 
   return(
     <div style={{minHeight:"100vh",background:C.cream}}>

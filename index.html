@@ -258,8 +258,9 @@ function Greeting({events,epigraph,epigraphBy,epigraphItalic}){
   if(rest) parts.push(`${rest} 件事待处理`);
   return(
     <div>
-      <div style={{fontFamily:SERIF,fontSize:23,fontWeight:700,color:C.fir,letterSpacing:1,whiteSpace:"nowrap"}}>
-        {greet}，{now.getMonth()+1} 月 {now.getDate()} 日 · 周{weekday(today)}
+      <div style={{fontSize:13,color:C.textLight,letterSpacing:2}}>{greet}</div>
+      <div style={{fontFamily:SERIF,fontSize:24,fontWeight:700,color:C.fir,letterSpacing:1,whiteSpace:"nowrap",marginTop:2}}>
+        {now.getMonth()+1} 月 {now.getDate()} 日　星期{weekday(today)}
       </div>
       {parts.length>0&&<div style={{fontSize:13,color:C.textLight,marginTop:5}}>今天 {parts.join("，")}</div>}
       <div style={{fontFamily:SERIF,fontSize:13,color:C.mist,marginTop:12,lineHeight:1.7,fontStyle:epigraphItalic?"italic":"normal"}}>

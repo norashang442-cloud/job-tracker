@@ -49,11 +49,11 @@ button:active:not(:disabled){transform:scale(0.95);}
 }
 
 /* Top panel: dark nav row + light info row, three aligned columns */
-/* 申博页：英文名较长、中栏只有两个标签，所以左栏放宽、中栏收窄，名字和切换开关能放在一行 */
-.top-grid{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:1.35fr 1fr 1fr;}
+/* 和秋招页同样的栏宽，两页切换时三栏分隔线位置一致 */
+.top-grid{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:400px 390px minmax(0,1fr);}
 .top-cell{padding:14px 20px;min-width:0;}
 .top-div-dark{border-left:1px solid rgba(255,255,255,0.16);}
-@media (max-width:900px){
+@media (max-width:1100px){
   .top-grid{grid-template-columns:1fr;}
   .top-div-dark,.top-div-light{border-left:none!important;}
   .top-cell{padding:10px 14px;}
@@ -139,7 +139,7 @@ const weekday=d=>"日一二三四五六"[new Date(d+"T00:00:00").getDay()];
 const SERIF="'Noto Serif SC','Source Han Serif SC','Songti SC','STZhongsong','STSong','SimSun',Georgia,serif";
 
 // 「在路上」：名字 + 一条延伸向远处的路，颜色跟随页面主题
-function Brand({label="在路上",italic=false}){
+function Brand({label="在路上",italic=false,size=24}){
   return(
     <div style={{display:"flex",alignItems:"center",gap:8,marginRight:4}}>
       <svg width="30" height="30" viewBox="0 0 26 26" fill="none" aria-hidden="true">
@@ -147,7 +147,7 @@ function Brand({label="在路上",italic=false}){
         <path d="M7 21 C 9 15, 15 15, 12.5 9.5 S 15 5.5, 16.5 5" stroke={C.frost} strokeWidth="1.6" strokeLinecap="round"/>
         <path d="M11 21 C 13 16.5, 18 15.5, 15.5 10 S 17 6.5, 17.5 5.5" stroke={C.reed} strokeWidth="1.1" strokeLinecap="round"/>
       </svg>
-      <span style={{fontFamily:SERIF,color:C.frost,fontSize:24,fontWeight:700,letterSpacing:italic?0.5:2,fontStyle:italic?"italic":"normal",whiteSpace:"nowrap"}}>{label}</span>
+      <span style={{fontFamily:SERIF,color:C.frost,fontSize:size,fontWeight:700,letterSpacing:italic?0.5:2,fontStyle:italic?"italic":"normal",whiteSpace:"nowrap"}}>{label}</span>
     </div>
   );
 }
@@ -234,8 +234,8 @@ function StatList({stats}){
 // 秋招 / 申博切换：放在顶部栏最左边，表示「换一个工作区」，和本页的标签页分开
 function PageSwitch({current}){
   const item=(key,href,label)=>key===current
-    ?<span style={{padding:"7px 16px",borderRadius:20,background:C.white,color:C.fir,fontSize:14,fontWeight:700,whiteSpace:"nowrap"}}>{label}</span>
-    :<a href={href} style={{padding:"7px 16px",borderRadius:20,color:C.mist,fontSize:14,fontWeight:600,textDecoration:"none",whiteSpace:"nowrap"}}
+    ?<span style={{padding:"7px 14px",borderRadius:20,background:C.white,color:C.fir,fontSize:14,fontWeight:700,whiteSpace:"nowrap"}}>{label}</span>
+    :<a href={href} style={{padding:"7px 14px",borderRadius:20,color:C.mist,fontSize:14,fontWeight:600,textDecoration:"none",whiteSpace:"nowrap"}}
         onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>{label}</a>;
   return(
     <div style={{display:"flex",gap:2,background:"rgba(0,0,0,0.22)",borderRadius:24,padding:3}}>
@@ -1404,7 +1404,7 @@ function App(){
       <div style={{background:C.fir}}>
         <div className="top-grid">
           <div className="top-cell" style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-            <Brand label="On the Road" italic/>
+            <Brand label="On the Road" italic size={22}/>
             <PageSwitch current="phd"/>
           </div>
           <div className="top-cell top-div-dark" style={{display:"flex",alignItems:"center"}}>

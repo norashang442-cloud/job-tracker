@@ -689,6 +689,39 @@ function AgendaPanel({events,target,onOpen}){
   );
 }
 
+// 收件箱顶部：手机速记的上手指南（扫码 / 网址、登录、添加到主屏幕）。二维码库只在展开时才加载
+function MobileCaptureGuide({defaultOpen}){
+  const url=`${location.origin}/capture.html`;
+  const online=/^https?:$/.test(location.protocol);
+  const [open,setOpen]=useState(defaultOpen);
+  const [copied,setCopied]=useState(false);
+  const qrRef=useRef(null);
+  useEffect(()=>{
+    if(!open||!online||!qrRef.current) return;
+    const draw=()=>{if(!qrRef.current) return;qrRef.current.innerHTML="";new window.QRCode(qrRef.current,{text:url,width:112,height:112,colorDark:C.fir,colorLight:"#ffffff"});};
+    if(window.QRCode){draw();return;}
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+    s.onload=draw;document.head.appendChild(s);
+  },[open]);
+  const copy=()=>navigator.clipboard?.writeText(url).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1500);});
+  return(
+    <div style={{background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:12,color:C.textLight}}>
+      <div onClick={()=>setOpen(v=>!v)} style={{cursor:"pointer",fontWeight:700,color:C.fir,fontSize:13}}>📱 在手机上速记 {open?"▲":"▼"}</div>
+      {open&&<div style={{display:"flex",gap:14,marginTop:10,alignItems:"flex-start"}}>
+        {online&&<div ref={qrRef} style={{flexShrink:0,width:112,height:112,background:C.white}}/>}
+        <ol style={{paddingLeft:18,margin:0,lineHeight:1.8,flex:1,minWidth:0}}>
+          <li>用手机扫左边的码，或在手机浏览器打开：<br/>
+            <span style={{color:C.text,wordBreak:"break-all",userSelect:"all"}}>{online?url:"（部署到网站后才有网址）"}</span>
+            {online&&<button onClick={copy} style={{marginLeft:6,padding:"1px 8px",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>{copied?"已复制":"复制"}</button>}</li>
+          <li>在页面底部展开「登录」，用和电脑上<b>同一个账号</b>登录（注册请在电脑上完成）</li>
+          <li>添加到主屏幕，以后像 App 一样一点就开：iPhone 用 Safari 点「分享 → 添加到主屏幕」；安卓在浏览器菜单里选「添加到主屏幕」</li>
+          <li>刷到招聘 / 项目信息时，复制文字或链接粘贴进去，点「存进收件箱」；回到电脑，在这里整理</li>
+        </ol>
+      </div>}
+    </div>
+  );
+}
 // 当前登录的账号（从服务器取一次）；loading 时还不知道是否登录
 function useMe(){
   const key=getKey();
@@ -2045,6 +2078,7 @@ function App(){
           <h3 style={{color:C.fir,fontSize:17}}>📥 收件箱</h3>
           <button onClick={()=>setAccountOpen(true)} style={{background:"none",border:"none",color:C.textLight,fontSize:11,cursor:"pointer",textDecoration:"underline"}}>👤 账号</button>
         </div>
+        <MobileCaptureGuide defaultOpen={inboxItems.length===0}/>
         {inboxLoading&&<div style={{fontSize:12,color:C.textLight,textAlign:"center",padding:"12px 0"}}>加载中…</div>}
         {!inboxLoading&&inboxError&&<div style={{fontSize:12,color:"#b05050",textAlign:"center",padding:"12px 0"}}>{inboxError}</div>}
         {!inboxLoading&&!inboxError&&inboxItems.length===0&&<div style={{fontSize:12,color:C.mist,textAlign:"center",padding:"12px 0"}}>收件箱是空的</div>}

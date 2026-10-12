@@ -223,8 +223,9 @@ function AgendaPanel({events,target,onOpen}){
   const otherLabel=other==="job"?"秋招":"申博";
   const [weekOpen,setWeekOpen]=useState(()=>{try{return localStorage.getItem("agenda_week_open")==="1"}catch{return false}});
   const toggleWeek=()=>setWeekOpen(v=>{try{localStorage.setItem("agenda_week_open",v?"0":"1")}catch{} return !v;});
-  const [nearOpen,setNearOpen]=useState(()=>{try{return localStorage.getItem("agenda_near_open")!=="0"}catch{return true}});
-  const toggleNear=()=>setNearOpen(v=>{try{localStorage.setItem("agenda_near_open",v?"0":"1")}catch{} return !v;});
+  // 申博页的「今天 / 明天」默认折叠，展开状态和秋招页分开记
+  const [nearOpen,setNearOpen]=useState(()=>{try{return localStorage.getItem("agenda_near_open_phd")==="1"}catch{return false}});
+  const toggleNear=()=>setNearOpen(v=>{try{localStorage.setItem("agenda_near_open_phd",v?"0":"1")}catch{} return !v;});
   const [nearAll,setNearAll]=useState(false);
   const [openGroups,setOpenGroups]=useState({});
   const toggleGroup=k=>setOpenGroups(g=>({...g,[k]:!g[k]}));

@@ -1,4 +1,4 @@
-import { kv, cors, randomToken, hashPassword, checkPassword, getUser, resolveUser, keyFor, getSettings, encrypt } from "./_lib.js";
+import { kv, cors, randomToken, hashPassword, checkPassword, getUser, resolveUser, keyFor, getSettings, encrypt, AI_DAILY_LIMIT, usageKey } from "./_lib.js";
 
 // Accounts: invite-only registration, username + password login.
 // Registering with INBOX_SECRET as the invite code creates the owner account (once); the owner hands out invite codes.
@@ -60,7 +60,7 @@ export default async function handler(req, res) {
 
     switch (body.action) {
       case "me":
-        return res.status(200).json({ user: me });
+        return res.status(200).json({ user: { ...me, aiLimit: AI_DAILY_LIMIT } });
 
       // Mail settings: the user's own Resend key (only ever returned as a masked hint) and the address it may send to.
       case "settings-get": {
@@ -93,8 +93,20 @@ export default async function handler(req, res) {
 
       case "admin-list": {
         if (!me.owner) return res.status(403).json({ error: "Forbidden" });
-        const [users, invites] = await Promise.all([kv(["SMEMBERS", "users"]), kv(["SMEMBERS", "invites"])]);
-        return res.status(200).json({ users: (users || []).sort(), invites: invites || [] });
+        const [names, invites] = await Promise.all([kv(["SMEMBERS", "users"]), kv(["SMEMBERS", "invites"])]);
+        const users = await Promise.all((names || []).sort().map(async n => {
+          const u = await getUser(n);
+          return { name: n, owner: !!u?.owner, aiAllowed: !!u?.aiAllowed, aiUsedToday: Math.min(Number(await kv(["GET", usageKey(n)])) || 0, AI_DAILY_LIMIT) };
+        }));
+        return res.status(200).json({ users, invites: invites || [], aiLimit: AI_DAILY_LIMIT });
+      }
+
+      case "user-ai": {
+        if (!me.owner) return res.status(403).json({ error: "Forbidden" });
+        const u = await getUser(name);
+        if (!u) return res.status(404).json({ error: "没有这个用户" });
+        await kv(["SET", `user:${name}`, JSON.stringify({ ...u, aiAllowed: !!body.allowed })]);
+        return res.status(200).json({ ok: true });
       }
 
       case "invite-delete": {

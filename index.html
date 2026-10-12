@@ -287,6 +287,35 @@ function MailSettings({me,smallBtn}){
     </div>
   );
 }
+// 自动填写（AI）：浏览器里存了自己的 DeepSeek key 就用它；否则用登录身份走系统额度（站长开通，每天有上限）
+const getAiKey=()=>{try{return localStorage.getItem("jt4_deepseek_key")||""}catch{return ""}};
+const aiHeaders=()=>({"Content-Type":"application/json","X-Inbox-Key":getKey(),...(getAiKey()?{"X-DeepSeek-Key":getAiKey()}:{})});
+const isAiGateMsg=m=>/自动填写|DeepSeek|系统额度/.test(m||"");
+const aiFailMsg=e=>isAiGateMsg(e?.message)?"⚠️ "+e.message:"⚠️ 提取失败，请手动填写";
+function AiSettings({me,smallBtn,section}){
+  const [own,setOwn]=useState(getAiKey);
+  const [input,setInput]=useState("");
+  const save=()=>{const k=input.trim();if(!k)return;try{localStorage.setItem("jt4_deepseek_key",k)}catch{} setOwn(k);setInput("");};
+  const clear=()=>{try{localStorage.removeItem("jt4_deepseek_key")}catch{} setOwn("");};
+  const status=own?<>使用你自己的 DeepSeek key（{own.slice(0,5)}…{own.slice(-4)}），只存在这个浏览器里</>
+    :me?.owner?"站长：使用系统额度，不限次数"
+    :me?.aiAllowed?`使用系统额度，每天最多 ${me.aiLimit} 次`
+    :me?"系统额度还没为你开通。可以找站长开通，或者填自己的 DeepSeek key："
+    :"登录后可使用站长开通的系统额度，或者直接填自己的 DeepSeek key：";
+  return(
+    <>
+      <div style={section}>✨ 自动填写（AI）</div>
+      <div style={{fontSize:12,color:C.textLight,lineHeight:1.7}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span style={{flex:1}}>{status}</span>{own&&<button onClick={clear} style={smallBtn}>清除</button>}</div>
+        {!own&&<div style={{display:"flex",gap:8,marginTop:6}}>
+          <input type="password" value={input} onChange={e=>setInput(e.target.value)} placeholder="自己的 DeepSeek key（sk- 开头，可选）" autoComplete="off" style={{...inp,fontSize:12,flex:1}}/>
+          <button onClick={save} style={smallBtn}>保存</button>
+        </div>}
+        {!own&&<div style={{fontSize:11,marginTop:4}}>在 <a href="https://platform.deepseek.com" target="_blank" rel="noopener noreferrer" style={{color:C.sage}}>DeepSeek 开放平台</a> 注册、充值后创建 API key。key 只保存在这个浏览器里，每次自动填写时直接转交给 DeepSeek，不会存到服务器。</div>}
+      </div>
+    </>
+  );
+}
 // 站长：生成 / 作废邀请码，看有哪些用户
 function AdminBox({smallBtn}){
   const [data,setData]=useState(null);
@@ -294,6 +323,7 @@ function AdminBox({smallBtn}){
   const load=()=>accountCall("admin-list").then(setData).catch(e=>setMsg("⚠️ "+e.message));
   const create=async()=>{try{const {code}=await accountCall("invite-create");setMsg(`新邀请码：${code}（每个只能用一次）`);load();}catch(e){setMsg("⚠️ "+e.message);}};
   const del=async code=>{try{await accountCall("invite-delete",{code});load();}catch(e){setMsg("⚠️ "+e.message);}};
+  const toggleAi=async u=>{try{await accountCall("user-ai",{username:u.name,allowed:!u.aiAllowed});load();}catch(e){setMsg("⚠️ "+e.message);}};
   return(
     <details onToggle={e=>e.target.open&&!data&&load()} style={{marginTop:10,fontSize:12,color:C.textLight}}>
       <summary style={{cursor:"pointer"}}>🔑 站长：邀请码与用户</summary>
@@ -304,7 +334,14 @@ function AdminBox({smallBtn}){
         </div>
         {data&&<>
           <div>未使用的邀请码：{data.invites.length?data.invites.map(c=><span key={c} style={{display:"inline-flex",gap:4,alignItems:"center",marginRight:10}}><code style={{userSelect:"all"}}>{c}</code><span onClick={()=>del(c)} title="作废" style={{cursor:"pointer",color:"#b05050"}}>×</span></span>):"无"}</div>
-          <div>用户（{data.users.length}）：{data.users.join("、")||"无"}</div>
+          <div>用户（{data.users.length}）：</div>
+          {data.users.map(u=><div key={u.name} style={{display:"flex",alignItems:"center",gap:8,paddingLeft:8}}>
+            <span style={{flex:1,color:C.text}}>{u.name}{u.owner&&" · 站长"}</span>
+            {!u.owner&&<>
+              <span>AI 今日 {u.aiUsedToday}/{data.aiLimit}</span>
+              <button onClick={()=>toggleAi(u)} style={{...smallBtn,padding:"2px 8px",...(u.aiAllowed?{background:C.sage,color:C.white,border:"none"}:{})}}>{u.aiAllowed?"系统额度：开":"系统额度：关"}</button>
+            </>}
+          </div>)}
         </>}
       </div>
     </details>
@@ -727,6 +764,7 @@ function ReminderPanel({sync,resync}){
       </div>}
 
 
+      <AiSettings me={me} smallBtn={smallBtn} section={section}/>
       {me&&<>
         <div style={section}>📧 每日邮件</div>
         <div style={{fontSize:12,color:C.textLight,lineHeight:1.6,marginBottom:8}}>每天早上 8 点（北京时间）检查一次，有到期事项才发信。待投岗位的「提醒我」和套磁跟进到期后会每天重复提醒，直到你处理。</div>
@@ -826,7 +864,7 @@ function ActivityForm({initial,context,companies=[],applications=[],onSave,onCan
     try{
       const res=await fetch("/api/extract-event",{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:aiHeaders(),
         body:JSON.stringify({...(/^https?:\/\/\S+$/.test(raw)?{url:raw}:{text:raw}),context}),
       });
       const json=await res.json();
@@ -838,7 +876,7 @@ function ActivityForm({initial,context,companies=[],applications=[],onSave,onCan
         return next;
       });
       setMsg("✅ 提取成功，请核对时间和时区后保存");
-    }catch{ setMsg("⚠️ 提取失败，请手动填写"); }
+    }catch(e){ setMsg(aiFailMsg(e)); }
     setParsing(false);
   };
 
@@ -1171,7 +1209,7 @@ function JobForm({initial,companies,jobs,toApply,onSave,onCancel}){
     try{
       const res=await fetch("/api/extract",{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:aiHeaders(),
         body:JSON.stringify({text:rawText})
       });
       const json=await res.json();
@@ -1184,7 +1222,7 @@ function JobForm({initial,companies,jobs,toApply,onSave,onCancel}){
         source:   SOURCES.includes(json.source)?json.source:f.source,
       }));
       setMsg("✅ 提取成功，请核对后保存");
-    }catch{ setMsg("⚠️ 提取失败，请手动填写"); }
+    }catch(e){ setMsg(aiFailMsg(e)); }
     setParsing(false);
   };
 
@@ -1477,7 +1515,7 @@ function ToApplyForm({initial,companies,jobs,toApply,onSave,onCancel}){
     try{
       const res=await fetch("/api/extract",{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:aiHeaders(),
         body:JSON.stringify({text:rawText})
       });
       const json=await res.json();
@@ -1487,7 +1525,7 @@ function ToApplyForm({initial,companies,jobs,toApply,onSave,onCancel}){
         position: json.position ||f.position,
       }));
       setMsg("✅ 提取成功，请核对后保存");
-    }catch{ setMsg("⚠️ 提取失败，请手动填写"); }
+    }catch(e){ setMsg(aiFailMsg(e)); }
     setParsing(false);
   };
 
@@ -1768,7 +1806,7 @@ function App(){
       const isEvent=item.kind==="event";
       const res=await fetch(isEvent?"/api/extract-event":"/api/extract",{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:aiHeaders(),
         body:JSON.stringify({...(item.type==="url"?{url:item.content}:{text:item.content}),...(isEvent?{context:"job"}:{})}),
       });
       const json=await res.json();
@@ -1832,7 +1870,7 @@ function App(){
       try{
         const res=await fetch("/api/extract-event",{
           method:"POST",
-          headers:{"Content-Type":"application/json"},
+          headers:aiHeaders(),
           body:JSON.stringify({...(item.type==="url"?{url:item.content}:{text:item.content}),context:"job"}),
         });
         extracted=await res.json();
@@ -1853,7 +1891,7 @@ function App(){
       try{
         const res=await fetch("/api/extract",{
           method:"POST",
-          headers:{"Content-Type":"application/json"},
+          headers:aiHeaders(),
           body:JSON.stringify(item.type==="url"?{url:item.content}:{text:item.content}),
         });
         extracted=await res.json();
@@ -2203,6 +2241,7 @@ function App(){
             </div>
             {isList&&<div style={{fontSize:11,color:C.moss,marginBottom:6}}>看起来是一份清单（{lines.length}行）</div>}
             {!isList&&ext&&ext.loading&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>🔍 识别中…</div>}
+            {ext&&!ext.loading&&isAiGateMsg(ext.error)&&<div style={{fontSize:11,color:"#b05050",marginBottom:6}}>⚠️ {ext.error}</div>}
             {isEvent&&ext&&!ext.loading&&!ext.error&&<div style={{fontSize:11,color:ext.title?C.sage:C.mist,fontWeight:ext.title?600:400,marginBottom:6}}>
               {ext.title?`📅 推测：${ext.title}${ext.date?` · ${ext.date}`:""}${ext.time?` ${ext.time} ${tzLabel(ext.timezone)}`:""}`:"未识别出活动信息"}
             </div>}

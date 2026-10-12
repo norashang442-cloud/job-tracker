@@ -1,9 +1,16 @@
+import { aiAccess, aiError } from "./_lib.js";
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Inbox-Key, X-DeepSeek-Key");
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  // Own DeepSeek key, or the site's key for the owner / users the owner enabled (daily cap) — see aiAccess.
+  let ai;
+  try { ai = await aiAccess(req); } catch (err) { return res.status(500).json({ error: "Failed", detail: err.message }); }
+  if (ai.error) return res.status(ai.status).json({ error: ai.error });
 
   const { text, url } = req.body;
   if (!text && !url) return res.status(400).json({ error: "No input provided" });
@@ -60,7 +67,7 @@ ${content}
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+        "Authorization": `Bearer ${ai.key}`,
       },
       body: JSON.stringify({
         model: "deepseek-chat",
@@ -68,6 +75,7 @@ ${content}
         messages: [{ role: "user", content: prompt }]
       })
     });
+    if (!aiRes.ok) return res.status(502).json({ error: aiError(aiRes.status, ai.own) });
     const data = await aiRes.json();
     const result = data.choices?.[0]?.message?.content || "";
     const json = JSON.parse(result.replace(/```json|```/g, "").trim());

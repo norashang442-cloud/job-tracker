@@ -51,7 +51,36 @@ export async function resolveUser(req) {
   const name = await kv(["GET", `session:${key}`]);
   if (!name) return null;
   const user = await getUser(name);
-  return user ? { name: user.name, owner: !!user.owner, calToken: user.calToken } : null;
+  return user ? { name: user.name, owner: !!user.owner, calToken: user.calToken, aiAllowed: !!user.aiAllowed } : null;
+}
+
+// ---------- AI auto-fill: two channels ----------
+// 1. The caller's own DeepSeek key (X-DeepSeek-Key, kept only in their browser) — no login, no cost to the site.
+// 2. The site's DEEPSEEK_API_KEY — owner unlimited; other users only once the owner enables them, capped per day.
+export const AI_DAILY_LIMIT = Number(process.env.AI_DAILY_LIMIT) || 30;
+const beijingDay = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+export const usageKey = name => `usage:${name}:${beijingDay()}`;
+
+export async function aiAccess(req) {
+  const own = String(req.headers["x-deepseek-key"] || "").trim();
+  if (own) return { key: own, own: true };
+  const user = await resolveUser(req);
+  if (!user) return { status: 401, error: "自动填写需要先登录（使用系统额度），或在「👤 账号」里填自己的 DeepSeek key" };
+  if (!user.owner) {
+    if (!user.aiAllowed) return { status: 403, error: "自动填写的系统额度还没为你开通：找站长开通，或在「👤 账号」里填自己的 DeepSeek key" };
+    const k = usageKey(user.name);
+    const n = await kv(["INCR", k]);
+    if (n === 1) await kv(["EXPIRE", k, 2 * 86400]);
+    if (n > AI_DAILY_LIMIT) return { status: 429, error: `今天的自动填写次数（${AI_DAILY_LIMIT} 次）用完了，明天再来，或在「👤 账号」里填自己的 DeepSeek key` };
+  }
+  return { key: process.env.DEEPSEEK_API_KEY, own: false };
+}
+
+export function aiError(status, own) {
+  if (status === 401) return own ? "你的 DeepSeek key 不对或已被删除，请在「👤 账号」里重新填写" : "系统的 DeepSeek key 失效了，请联系站长";
+  if (status === 402) return own ? "你的 DeepSeek 账户余额不足，需要先去 DeepSeek 开放平台充值" : "系统额度的余额用完了，请联系站长";
+  if (status === 429) return "DeepSeek 请求太频繁，过一会儿再试";
+  return `自动填写暂时不可用（DeepSeek ${status}）`;
 }
 
 // Per-user settings (Resend key, mail address, site URL). Secrets are AES-GCM encrypted with a key derived

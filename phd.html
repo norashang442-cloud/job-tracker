@@ -49,7 +49,8 @@ button:active:not(:disabled){transform:scale(0.95);}
 }
 
 /* Top panel: dark nav row + light info row, three aligned columns */
-.top-grid{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:1fr 1.25fr 1fr;}
+/* 申博页：英文名较长、中栏只有两个标签，所以左栏放宽、中栏收窄，名字和切换开关能放在一行 */
+.top-grid{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:1.35fr 1fr 1fr;}
 .top-cell{padding:14px 20px;min-width:0;}
 .top-div-dark{border-left:1px solid rgba(255,255,255,0.16);}
 @media (max-width:900px){
@@ -1370,19 +1371,18 @@ function App(){
     <div style={{minHeight:"100vh",background:C.cream}}>
       <div style={{background:C.fir}}>
         <div className="top-grid">
-          {/* 英文名较长，名字和切换开关上下排、左对齐；中栏两个标签也上下排，三栏统一左对齐 */}
-          <div className="top-cell" style={{display:"flex",flexDirection:"column",alignItems:"flex-start",justifyContent:"center",gap:10}}>
+          <div className="top-cell" style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
             <Brand label="On the Road" italic/>
             <PageSwitch current="phd"/>
           </div>
           <div className="top-cell top-div-dark" style={{display:"flex",alignItems:"center"}}>
             <div className="tabscroll">
-              <div style={{display:"flex",flexDirection:"column",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:20,padding:4,flexShrink:0}}>
-                <button className="mtab" style={{...mainTabBtn(mainTab==="professors"),textAlign:"left"}} onClick={()=>setMainTab("professors")}>
+              <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4,flexShrink:0}}>
+                <button className="mtab" style={mainTabBtn(mainTab==="professors")} onClick={()=>setMainTab("professors")}>
                   🧑‍🏫 套磁记录
                   {professors.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{professors.length}</span>}
                 </button>
-                <button className="mtab" style={{...mainTabBtn(mainTab==="applications"),textAlign:"left"}} onClick={()=>setMainTab("applications")}>
+                <button className="mtab" style={mainTabBtn(mainTab==="applications")} onClick={()=>setMainTab("applications")}>
                   🎓 网申项目
                   {applications.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{applications.length}</span>}
                 </button>

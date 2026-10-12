@@ -34,6 +34,7 @@ const esc = s => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").re
 
 const GROUPS = [
   { kind: "milestone", label: "📝 笔试 / 面试", short: "笔试/面试" },
+  { kind: "activity", label: "🎤 已报名的活动", short: "活动" },
   { kind: "followup", label: "📮 套磁该跟进了", short: "待跟进导师" },
   { kind: "deadline", label: "⏰ 截止日期", short: "截止" },
   { kind: "todo", label: "📌 待投岗位", short: "待投岗位" },
@@ -52,7 +53,7 @@ function buildEmail(due, today, siteUrl, calendarUrl) {
       return `<tr>
         <td style="padding:8px 10px;border-bottom:1px solid #E3EEE0;white-space:nowrap;color:${overdue ? "#c0392b" : "#4A6350"};font-weight:700;font-size:13px">${label}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #E3EEE0;font-size:14px;color:#1C2E22">${title}
-          <div style="font-size:12px;color:#7A8F7E;margin-top:2px">${esc(e.date)}${e.time ? " " + esc(e.time) : ""}${e.detail ? " · " + esc(e.detail) : ""}</div></td>
+          <div style="font-size:12px;color:#7A8F7E;margin-top:2px">${esc(e.date)}${e.time ? " " + esc(e.time) : ""}${e.endTime ? "–" + esc(e.endTime) : ""}${e.detail ? " · " + esc(e.detail) : ""}</div></td>
       </tr>`;
     }).join("");
     return `<h3 style="font-size:15px;color:#2F4538;margin:20px 0 6px">${g.label}</h3>

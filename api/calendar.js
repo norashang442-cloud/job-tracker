@@ -15,7 +15,7 @@ async function kv(cmd) {
 const diffDays = (a, b) => Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 86400000);
 const icsEscape = s => String(s || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 const compact = d => d.replace(/-/g, "");
-const PREFIX = { followup: "📮 跟进", milestone: "📝", deadline: "⏰", todo: "📌" };
+const PREFIX = { followup: "📮 跟进", milestone: "📝", deadline: "⏰", todo: "📌", activity: "🎤" };
 
 // RFC 5545 caps lines at 75 octets; fold on character boundaries so CJK text isn't split mid-byte.
 function fold(line) {
@@ -32,6 +32,7 @@ function fold(line) {
 
 // One alarm per remindOn date. All-day events fire at 09:00 local on that day; timed events fire N days before, or 2h before on the day itself.
 function alarms(e) {
+  if (e.noAlarm) return [];
   return (e.remindOn || []).map(r => {
     const d = diffDays(r, e.date);
     let trigger;
@@ -44,7 +45,11 @@ function alarms(e) {
 function buildEvent(e, dtstamp) {
   let dt;
   if (e.time) {
-    dt = [`DTSTART:${compact(e.date)}T${e.time.replace(":", "")}00`, "DURATION:PT1H"];
+    // Floating local time: the page already converted event times into the user's own timezone.
+    const start = `DTSTART:${compact(e.date)}T${e.time.replace(":", "")}00`;
+    dt = e.endTime && e.endTime > e.time
+      ? [start, `DTEND:${compact(e.date)}T${e.endTime.replace(":", "")}00`]
+      : [start, "DURATION:PT1H"];
   } else {
     const end = new Date(e.date + "T00:00:00Z"); end.setUTCDate(end.getUTCDate() + 1);
     dt = [`DTSTART;VALUE=DATE:${compact(e.date)}`, `DTEND;VALUE=DATE:${compact(end.toISOString().slice(0, 10))}`];

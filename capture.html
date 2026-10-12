@@ -36,6 +36,10 @@ button:disabled{background:#A8C5A0;}
   <button type="button" id="targetJob" class="active">📋 秋招</button>
   <button type="button" id="targetPhd">🎓 申博</button>
 </div>
+<div class="target">
+  <button type="button" id="kindInfo" class="active">📝 信息</button>
+  <button type="button" id="kindEvent">📅 活动</button>
+</div>
 <textarea id="content" placeholder="从小红书/公众号复制的内容，或者直接写公司名…" autofocus></textarea>
 <button id="submitBtn">存进收件箱</button>
 <div class="msg" id="msg"></div>
@@ -64,6 +68,21 @@ renderTarget();
 targetJobBtn.onclick = () => { target = "job"; localStorage.setItem(TARGET_STORAGE, target); renderTarget(); };
 targetPhdBtn.onclick = () => { target = "phd"; localStorage.setItem(TARGET_STORAGE, target); renderTarget(); };
 
+// 活动：宣讲会/网络研讨会的宣传链接或报名成功邮件，回电脑可一键转成活动
+let kind = "info";
+const kindInfoBtn = document.getElementById("kindInfo");
+const kindEventBtn = document.getElementById("kindEvent");
+const renderKind = () => {
+  kindInfoBtn.classList.toggle("active", kind === "info");
+  kindEventBtn.classList.toggle("active", kind === "event");
+  contentEl.placeholder = kind === "event"
+    ? "活动宣传链接，或者报名成功邮件的正文（时间、链接都复制进来）…"
+    : "从小红书/公众号复制的内容，或者直接写公司名…";
+};
+renderKind();
+kindInfoBtn.onclick = () => { kind = "info"; renderKind(); };
+kindEventBtn.onclick = () => { kind = "event"; renderKind(); };
+
 keyInput.value = localStorage.getItem(KEY_STORAGE) || "";
 saveKeyBtn.onclick = () => {
   localStorage.setItem(KEY_STORAGE, keyInput.value.trim());
@@ -87,7 +106,7 @@ submitBtn.onclick = async () => {
     const res = await fetch("/api/inbox-add", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Inbox-Key": key },
-      body: JSON.stringify({ content, target }),
+      body: JSON.stringify({ content, target, kind }),
     });
     if (res.status === 401) {
       document.getElementById("keybox").open = true;
@@ -96,7 +115,7 @@ submitBtn.onclick = async () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "failed");
     contentEl.value = "";
-    msgEl.textContent = "✅ 已存入收件箱";
+    msgEl.textContent = kind === "event" ? "✅ 活动已存入收件箱" : "✅ 已存入收件箱";
     msgEl.className = "msg ok";
   } catch (err) {
     msgEl.textContent = err.message === "密钥错误" ? "⚠️ 密钥错误，请在下方重新填写" : "⚠️ 保存失败，检查网络";

@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   const key = req.headers["x-inbox-key"] || req.query.key;
   if (!key || key !== process.env.INBOX_SECRET) return res.status(401).json({ error: "Unauthorized" });
 
-  const { content, target } = req.body || {};
+  const { content, target, kind } = req.body || {};
   const text = (content || "").trim();
   if (!text) return res.status(400).json({ error: "No content" });
   const kvKey = target === "phd" ? "inbox_phd" : "inbox";
@@ -34,6 +34,7 @@ export default async function handler(req, res) {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       content: text,
       type: /^https?:\/\//i.test(text) ? "url" : "text",
+      ...(kind === "event" ? { kind: "event" } : {}),
       createdAt: new Date().toISOString(),
     });
     await kv(["SET", kvKey, JSON.stringify(items)]);

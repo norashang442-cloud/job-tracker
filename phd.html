@@ -183,6 +183,244 @@ function ReminderPanel({events,sync,resync}){
   );
 }
 
+// ---------- 活动（宣讲会 / 网络研讨会 / Open Day…），与 index.html / phd.html 保持一致 ----------
+const EVENT_STATUS=[
+  {key:"interested",label:"想参加",color:"#6B6B6B",bg:"#ECECEC"},
+  {key:"registered",label:"已报名",color:"#2F5A7A",bg:"#DCF0F5"},
+  {key:"attended",  label:"已参加",color:"#2F6640",bg:"#D4EDD8"},
+  {key:"missed",    label:"错过了",color:"#7A3030",bg:"#F5DCDC"},
+];
+const EVENT_TZS=[["Asia/Shanghai","北京时间"],["Europe/London","英国时间"],["Europe/Paris","欧洲中部时间"],["America/New_York","美东时间"],["America/Los_Angeles","美西时间"],["Asia/Tokyo","日本时间"],["Australia/Sydney","悉尼时间"],["UTC","UTC"]];
+const tzLabel=tz=>(EVENT_TZS.find(t=>t[0]===tz)||[tz,tz])[1];
+const EVENT_TYPES={
+  job:["宣讲会","Insight Day / 开放日","网络研讨会","Networking","求职技能讲座","其他"],
+  phd:["项目宣讲 / Open Day","招生答疑","学术讲座 / Seminar","导师 / 实验室介绍","其他"],
+};
+const EMPTY_EVENT={title:"",organizer:"",type:"",date:"",time:"",endTime:"",timezone:"Asia/Shanghai",joinUrl:"",regUrl:"",regDeadline:"",status:"interested",note:"",takeaway:"",company:"",school:"",applicationId:null};
+const migrateEvent=a=>({...EMPTY_EVENT,...a,status:EVENT_STATUS.some(s=>s.key===a.status)?a.status:"interested",id:a.id??Date.now()});
+
+// Wall-clock time in `tz` → the viewer's local date/time (activities are stored in their original timezone).
+function toLocal(date,time,tz){
+  if(!date||!time||!tz) return {date,time};
+  try{
+    const [y,m,d]=date.split("-").map(Number),[hh,mm]=time.split(":").map(Number);
+    const fmt=new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+    const offset=t=>{const p=Object.fromEntries(fmt.formatToParts(new Date(t)).map(x=>[x.type,x.value]));return Date.UTC(+p.year,p.month-1,+p.day,+p.hour,+p.minute)-t;};
+    const guess=Date.UTC(y,m-1,d,hh,mm);
+    let inst=guess-offset(guess);
+    inst=guess-offset(inst);
+    const L=new Date(inst);
+    return {date:`${L.getFullYear()}-${pad2(L.getMonth()+1)}-${pad2(L.getDate())}`,time:`${pad2(L.getHours())}:${pad2(L.getMinutes())}`};
+  }catch{return {date,time};}
+}
+const localWhen=a=>{
+  const L=toLocal(a.date,a.time,a.timezone);
+  const E=a.endTime?toLocal(a.date,a.endTime,a.timezone):null;
+  const converted=L.date!==a.date||L.time!==a.time;
+  return {...L,endTime:E&&E.date===L.date?E.time:"",converted};
+};
+
+// 已报名的活动：前一天出现在提醒邮件里，并同步到订阅日历（不设闹钟）；想参加且有报名截止的，截止前一天和当天提醒。
+function buildActivityEvents(acts,today){
+  const ev=[];
+  acts.forEach(a=>{
+    const W=localWhen(a);
+    if(a.status==="registered"&&W.date&&W.date>=addDays(today,-30)){
+      const detail=[a.organizer,W.converted?`原时间 ${a.date.slice(5)} ${a.time} ${tzLabel(a.timezone)}`:"",a.joinUrl?"参会链接见标题":""].filter(Boolean).join(" · ");
+      ev.push({id:`act-${a.id}`,kind:"activity",title:a.title,detail,date:W.date,time:W.time||"",endTime:W.endTime,url:a.joinUrl||a.regUrl||"",remindOn:[addDays(W.date,-1)],noAlarm:true});
+    }
+    if(a.status==="interested"&&a.regDeadline&&a.regDeadline>=addDays(today,-1)){
+      ev.push({id:`act-${a.id}-reg`,kind:"deadline",title:`报名截止：${a.title}`,detail:a.organizer||"",date:a.regDeadline,time:"",url:a.regUrl||"",remindOn:[addDays(a.regDeadline,-1),a.regDeadline],noAlarm:true});
+    }
+  });
+  return ev;
+}
+
+function EventStatusTag({s}){
+  const x=EVENT_STATUS.find(i=>i.key===s)||EVENT_STATUS[0];
+  return <span style={{background:x.bg,color:x.color,padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>{x.label}</span>;
+}
+
+function ActivityForm({initial,context,companies=[],applications=[],onSave,onCancel}){
+  const [form,setForm]=useState(initial||{...EMPTY_EVENT,type:EVENT_TYPES[context][0]});
+  const [rawText,setRawText]=useState("");
+  const [parsing,setParsing]=useState(false);
+  const [msg,setMsg]=useState("");
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const W=localWhen(form);
+
+  const parse=async()=>{
+    const raw=rawText.trim();
+    if(!raw) return;
+    setParsing(true); setMsg("正在提取信息…");
+    try{
+      const res=await fetch("/api/extract-event",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({...(/^https?:\/\/\S+$/.test(raw)?{url:raw}:{text:raw}),context}),
+      });
+      const json=await res.json();
+      if(!res.ok) throw new Error(json.error||"failed");
+      setForm(f=>{
+        const next={...f};
+        ["title","organizer","company","school","date","time","endTime","timezone","joinUrl","regUrl","regDeadline"].forEach(k=>{if(json[k]) next[k]=json[k];});
+        if(!next.regUrl&&/^https?:\/\/\S+$/.test(raw)) next.regUrl=raw;
+        return next;
+      });
+      setMsg("✅ 提取成功，请核对时间和时区后保存");
+    }catch{ setMsg("⚠️ 提取失败，请手动填写"); }
+    setParsing(false);
+  };
+
+  return(
+    <div>
+      <h3 style={{margin:"0 0 16px",color:C.fir,fontSize:17}}>{initial?.id?"编辑活动":"添加活动"}</h3>
+      {!initial?.id&&(
+        <div style={{background:C.frost,borderRadius:10,padding:14,marginBottom:16}}>
+          <label style={{...lbl,color:C.moss}}>🔍 自动提取活动信息</label>
+          <textarea value={rawText} onChange={e=>setRawText(e.target.value)}
+            placeholder="粘贴活动宣传链接、文章文字，或报名成功邮件的正文…"
+            style={{...inp,height:72,resize:"vertical",fontSize:12,lineHeight:1.5,fontFamily:"inherit",marginTop:6,marginBottom:10}}/>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            {msg?<span style={{fontSize:12,color:msg.startsWith("✅")?C.sage:msg.startsWith("⚠️")?"#b07030":C.textLight}}>{msg}</span>:<span style={{fontSize:12,color:C.textLight}}>粘贴后点击自动填写</span>}
+            <button onClick={parse} disabled={parsing||!rawText.trim()}
+              style={{padding:"7px 16px",borderRadius:8,border:"none",background:parsing?C.mist:C.fir,color:C.white,cursor:parsing?"not-allowed":"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap",flexShrink:0,marginLeft:10}}>
+              {parsing?"提取中…":"自动填写"}
+            </button>
+          </div>
+        </div>
+      )}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div style={{gridColumn:"1/-1"}}><label style={lbl}>活动名称 *</label><input style={inp} value={form.title} onChange={e=>set("title",e.target.value)} placeholder={context==="phd"?"如：XX University PhD Open Day":"如：XX 银行 2027 校招宣讲会"}/></div>
+        <div><label style={lbl}>类型</label>
+          <select style={inp} value={form.type||""} onChange={e=>set("type",e.target.value)}>
+            {EVENT_TYPES[context].map(t=><option key={t}>{t}</option>)}
+          </select>
+        </div>
+        <div><label style={lbl}>状态</label>
+          <select style={inp} value={form.status} onChange={e=>set("status",e.target.value)}>
+            {EVENT_STATUS.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
+        </div>
+        {context==="job"?(
+          <div><label style={lbl}>相关公司</label>
+            <input style={inp} list="event-companies" value={form.company||""} onChange={e=>set("company",e.target.value)} placeholder="可选"/>
+            <datalist id="event-companies">{companies.map(c=><option key={c.id} value={c.company}/>)}</datalist>
+          </div>
+        ):(
+          <div><label style={lbl}>相关学校</label><input style={inp} value={form.school||""} onChange={e=>set("school",e.target.value)} placeholder="可选"/></div>
+        )}
+        <div><label style={lbl}>主办方</label><input style={inp} value={form.organizer||""} onChange={e=>set("organizer",e.target.value)} placeholder="可选"/></div>
+        {context==="phd"&&applications.length>0&&(
+          <div style={{gridColumn:"1/-1"}}><label style={lbl}>关联网申项目（可选）</label>
+            <select style={inp} value={form.applicationId??""} onChange={e=>set("applicationId",e.target.value?Number(e.target.value):null)}>
+              <option value="">不关联</option>
+              {applications.map(a=><option key={a.id} value={a.id}>{a.school} · {a.program}</option>)}
+            </select>
+          </div>
+        )}
+        <div><label style={lbl}>日期 *</label><input type="date" style={inp} value={form.date||""} onChange={e=>set("date",e.target.value)}/></div>
+        <div><label style={lbl}>活动所用时区</label>
+          <select style={inp} value={form.timezone||"Asia/Shanghai"} onChange={e=>set("timezone",e.target.value)}>
+            {EVENT_TZS.map(([k,l])=><option key={k} value={k}>{l}</option>)}
+          </select>
+        </div>
+        <div><label style={lbl}>开始时间</label><input type="time" style={inp} value={form.time||""} onChange={e=>set("time",e.target.value)}/></div>
+        <div><label style={lbl}>结束时间</label><input type="time" style={inp} value={form.endTime||""} onChange={e=>set("endTime",e.target.value)}/></div>
+        {W.converted&&(
+          <div style={{gridColumn:"1/-1",fontSize:12,color:C.sage,background:C.cream,borderRadius:8,padding:"6px 10px"}}>
+            🕒 换算成你的本地时间：{W.date} {W.time}{W.endTime?`–${W.endTime}`:""}（日历和提醒按这个时间）
+          </div>
+        )}
+        <div style={{gridColumn:"1/-1"}}><label style={lbl}>参会链接（Zoom / Teams / 直播间）</label><input style={inp} value={form.joinUrl||""} onChange={e=>set("joinUrl",e.target.value)} placeholder="https://..."/></div>
+        <div><label style={lbl}>报名 / 宣传页链接</label><input style={inp} value={form.regUrl||""} onChange={e=>set("regUrl",e.target.value)} placeholder="https://..."/></div>
+        <div><label style={lbl}>报名截止</label><input type="date" style={inp} value={form.regDeadline||""} onChange={e=>set("regDeadline",e.target.value)}/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={lbl}>备注</label><textarea style={{...inp,minHeight:56,resize:"vertical",fontFamily:"inherit",lineHeight:1.5}} value={form.note||""} onChange={e=>set("note",e.target.value)} placeholder="可选"/></div>
+        {(form.status==="attended"||form.takeaway)&&(
+          <div style={{gridColumn:"1/-1"}}><label style={lbl}>收获 / 要点</label><textarea style={{...inp,minHeight:72,resize:"vertical",fontFamily:"inherit",lineHeight:1.5}} value={form.takeaway||""} onChange={e=>set("takeaway",e.target.value)} placeholder={context==="phd"?"如：导师说明年招 2 人，看重编程背景…":"如：HR 说今年招 20 人，看重 xx 经历…"}/></div>
+        )}
+      </div>
+      <div style={{fontSize:11,color:C.textLight,marginTop:12}}>状态为「已报名」时，活动前一天会出现在提醒邮件里，并同步到订阅日历。</div>
+      <div style={{display:"flex",gap:10,marginTop:14,justifyContent:"flex-end"}}>
+        <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
+        <button onClick={()=>form.title&&form.date&&onSave(form)}
+          style={{padding:"8px 22px",borderRadius:8,border:"none",background:C.fir,color:C.white,cursor:"pointer",fontSize:14,fontWeight:600}}>保存</button>
+      </div>
+    </div>
+  );
+}
+
+function ActivityCard({act,context,applications=[],onEdit,onDel,onStatus}){
+  const W=localWhen(act);
+  const today=todayStr();
+  const past=W.date&&W.date<today;
+  const app=context==="phd"&&act.applicationId?applications.find(a=>a.id===act.applicationId):null;
+  const related=context==="job"?act.company:act.school;
+  const quick=act.status==="interested"?[["registered","✓ 已报名"]]
+    :act.status==="registered"&&W.date<=today?[["attended","✓ 已参加"],["missed","错过了"]]:[];
+  return(
+    <div className="card" style={{background:C.white,border:`1.5px solid ${act.status==="registered"&&!past?C.sage:C.border}`,borderRadius:12,padding:"14px 16px",boxShadow:`0 2px 8px ${C.shadow}`,transition:"box-shadow 0.15s",opacity:past&&act.status!=="registered"?0.8:1}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:4}}>
+        <div style={{fontWeight:700,fontSize:14,color:C.fir,wordBreak:"break-word",flex:1}}>
+          {act.regUrl?<a href={act.regUrl} title={act.regUrl} target="_blank" rel="noopener noreferrer" style={{color:C.fir,textDecoration:"none"}}>{act.title} ↗</a>:act.title}
+        </div>
+        <EventStatusTag s={act.status}/>
+      </div>
+      <div style={{fontSize:12,color:C.textLight,marginBottom:6}}>
+        {[act.type,related,act.organizer&&act.organizer!==related?act.organizer:""].filter(Boolean).join(" · ")}
+      </div>
+      <div style={{fontSize:13,color:past?C.mist:C.text,fontWeight:600,marginBottom:4}}>
+        📅 {W.date||"日期未定"}{W.time?` ${W.time}`:""}{W.endTime?`–${W.endTime}`:""}
+        {W.date&&!past&&<span style={{fontSize:11,color:C.textLight,fontWeight:400}}>（{dueLabel(W.date,today)}）</span>}
+      </div>
+      {W.converted&&<div style={{fontSize:11,color:C.mist,marginBottom:4}}>原时间 {act.date} {act.time}{act.endTime?`–${act.endTime}`:""} {tzLabel(act.timezone)}</div>}
+      {act.status==="interested"&&act.regDeadline&&<div style={{fontSize:11,color:act.regDeadline<=addDays(today,1)?"#c0392b":C.textLight,marginBottom:4}}>⏳ 报名截止 {act.regDeadline}</div>}
+      {app&&<div style={{fontSize:11,color:C.textLight,marginBottom:4}}>🎓 {app.school} · {app.program}</div>}
+      {act.joinUrl&&!past&&<a href={act.joinUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",fontSize:12,color:C.white,background:C.sage,borderRadius:6,padding:"3px 10px",textDecoration:"none",margin:"4px 0"}}>进入会议 ↗</a>}
+      {act.note&&<div style={{fontSize:12,color:C.textLight,fontStyle:"italic",whiteSpace:"pre-wrap",wordBreak:"break-word",marginTop:4}}>📝 {linkifyText(act.note)}</div>}
+      {act.takeaway&&<div style={{fontSize:12,color:C.text,background:C.cream,borderRadius:7,padding:"6px 8px",whiteSpace:"pre-wrap",wordBreak:"break-word",marginTop:6}}>💡 {act.takeaway}</div>}
+      <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>
+        {quick.map(([k,l])=><button key={k} onClick={()=>onStatus(k)} style={{padding:"5px 10px",borderRadius:7,border:"none",background:k==="missed"?C.frost:C.fir,color:k==="missed"?C.textLight:C.white,fontSize:12,cursor:"pointer",fontWeight:600}}>{l}</button>)}
+        <button onClick={onEdit} style={{flex:1,padding:"5px 0",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:12,cursor:"pointer"}}>编辑</button>
+        <button onClick={onDel} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:12,cursor:"pointer"}}>删除</button>
+      </div>
+    </div>
+  );
+}
+
+function ActivitiesTab({acts,context,applications,onEdit,onDel,onStatus}){
+  const [pastOpen,setPastOpen]=useState(false);
+  const today=todayStr();
+  const withWhen=acts.map(a=>({a,W:localWhen(a)}));
+  // 「即将进行」：日期未到，或者已报名但还没标记参加/错过
+  const upcoming=withWhen.filter(({a,W})=>!W.date||W.date>=today||a.status==="registered").sort((x,y)=>(x.W.date+x.W.time).localeCompare(y.W.date+y.W.time));
+  const past=withWhen.filter(x=>!upcoming.includes(x)).sort((x,y)=>(y.W.date+y.W.time).localeCompare(x.W.date+x.W.time));
+  const grid=list=>(
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+      {list.map(({a})=><ActivityCard key={a.id} act={a} context={context} applications={applications} onEdit={()=>onEdit(a)} onDel={()=>onDel(a.id)} onStatus={s=>onStatus(a.id,s)}/>)}
+    </div>
+  );
+  if(acts.length===0) return(
+    <div style={{textAlign:"center",padding:"60px 20px",color:C.mist}}>
+      <div style={{fontSize:36,marginBottom:12}}>📅</div>
+      <div style={{fontSize:15,fontWeight:600,marginBottom:6}}>暂无活动</div>
+      <div style={{fontSize:13}}>点击「添加活动」，粘贴宣传链接或报名成功邮件即可自动识别；手机上可以用速记页的「📅 活动」先存进收件箱</div>
+    </div>
+  );
+  return(
+    <div>
+      <div style={{fontSize:13,fontWeight:700,color:C.moss,marginBottom:10}}>即将进行 · {upcoming.length}</div>
+      {upcoming.length?grid(upcoming):<div style={{fontSize:12,color:C.mist,marginBottom:10}}>没有即将进行的活动</div>}
+      {past.length>0&&(
+        <div style={{marginTop:22}}>
+          <div onClick={()=>setPastOpen(v=>!v)} style={{fontSize:13,fontWeight:700,color:C.textLight,marginBottom:10,cursor:"pointer"}}>已结束 · {past.length} {pastOpen?"▲":"▼"}</div>
+          {pastOpen&&grid(past)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const FOLLOWUP_FIRST_DAYS=5;  // 发出套磁信后几天提醒第一次跟进
 const FOLLOWUP_AGAIN_DAYS=2;  // 跟进后仍没回复，几天后再提醒
 
@@ -783,7 +1021,20 @@ function App(){
   };
 
   const [reminderOpen,setReminderOpen]=useState(false);
-  const reminderEvents=buildPhdEvents(professors,applications,todayStr());
+  const [acts,setActs]=useState(()=>{try{return JSON.parse(localStorage.getItem("phd_events")||"[]").map(migrateEvent)}catch{return []}});
+  useEffect(()=>{try{localStorage.setItem("phd_events",JSON.stringify(acts))}catch{}},[acts]);
+  const [actModal,setActModal]=useState(null);
+  const saveAct=item=>{
+    if(actModal==="add"||!actModal.id) setActs(a=>[...a,{...item,id:Date.now()}]);
+    else setActs(a=>a.map(x=>x.id===actModal.id?{...actModal,...item}:x));
+    setActModal(null);
+    if(convertingInboxId){ deleteInboxItem(convertingInboxId); setConvertingInboxId(null); }
+  };
+  const delAct=id=>{if(confirm("确认删除这个活动？"))setActs(a=>a.filter(x=>x.id!==id));};
+  const setActStatus=(id,status)=>setActs(a=>a.map(x=>x.id===id?{...x,status}:x));
+  const closeActModal=()=>{setActModal(null);setConvertingInboxId(null);};
+
+  const reminderEvents=[...buildPhdEvents(professors,applications,todayStr()),...buildActivityEvents(acts,todayStr())];
   const [reminderSync,resyncReminders]=useReminderSync("phd",reminderEvents);
   const dueCount=reminderEvents.filter(e=>isDue(e,todayStr())).length;
 
@@ -807,10 +1058,11 @@ function App(){
   const extractForItem=async item=>{
     setInboxExtractions(prev=>({...prev,[item.id]:{loading:true}}));
     try{
-      const res=await fetch("/api/extract-phd",{
+      const isEvent=item.kind==="event";
+      const res=await fetch(isEvent?"/api/extract-event":"/api/extract-phd",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(item.type==="url"?{url:item.content}:{text:item.content}),
+        body:JSON.stringify({...(item.type==="url"?{url:item.content}:{text:item.content}),...(isEvent?{context:"phd"}:{})}),
       });
       const json=await res.json();
       setInboxExtractions(prev=>({...prev,[item.id]:{...json,loading:false}}));
@@ -858,6 +1110,27 @@ function App(){
     setInboxExtractions(prev=>{const next={...prev};delete next[id];return next;});
   };
   const ignoreInboxItem=item=>{ if(confirm("确认忽略这条？")) deleteInboxItem(item.id); };
+  const convertInboxToEvent=async item=>{
+    setConvertingId(item.id);
+    let extracted=item.kind==="event"?inboxExtractions[item.id]:null;
+    if(!extracted||extracted.loading||extracted.error){
+      try{
+        const res=await fetch("/api/extract-event",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({...(item.type==="url"?{url:item.content}:{text:item.content}),context:"phd"}),
+        });
+        extracted=await res.json();
+      }catch{ extracted={}; }
+    }
+    const pick={};
+    ["title","organizer","school","date","time","endTime","timezone","joinUrl","regUrl","regDeadline"].forEach(k=>{if(extracted[k]) pick[k]=extracted[k];});
+    setConvertingInboxId(item.id);
+    setInboxOpen(false);
+    setMainTab("events");
+    setActModal({...EMPTY_EVENT,type:EVENT_TYPES.phd[0],...pick,regUrl:pick.regUrl||(item.type==="url"?item.content:""),note:item.type==="url"?"":item.content});
+    setConvertingId(null);
+  };
   const convertInboxItem=async item=>{
     setConvertingId(item.id);
     let extracted=inboxExtractions[item.id];
@@ -933,10 +1206,15 @@ function App(){
             🎓 网申项目
             {applications.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{applications.length}</span>}
           </button>
+          <button style={mainTabBtn(mainTab==="events")} onClick={()=>setMainTab("events")}>
+            📅 活动
+            {acts.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{acts.length}</span>}
+          </button>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           {mainTab==="professors"&&<button onClick={()=>setPModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加套磁记录</button>}
           {mainTab==="applications"&&<button onClick={()=>setAModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加网申项目</button>}
+          {mainTab==="events"&&<button onClick={()=>setActModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}>＋ 添加活动</button>}
         </div>
       </div>
 
@@ -1009,6 +1287,12 @@ function App(){
                 </table>
               </div>
             )}
+          </div>
+        )}
+
+        {mainTab==="events"&&(
+          <div className="tab-content">
+            <ActivitiesTab acts={acts} context="phd" applications={applications} onEdit={a=>setActModal(a)} onDel={delAct} onStatus={setActStatus}/>
           </div>
         )}
 
@@ -1092,6 +1376,9 @@ function App(){
       <Modal open={!!aModal} onClose={closeAModal}>
         <ApplicationForm initial={aModal==="add"?null:aModal} onSave={saveApp} onCancel={closeAModal}/>
       </Modal>
+      <Modal open={!!actModal} onClose={closeActModal}>
+        <ActivityForm key={actModal&&actModal.id?actModal.id:"new"} initial={actModal==="add"?null:actModal} context="phd" applications={applications} onSave={saveAct} onCancel={closeActModal}/>
+      </Modal>
       <Modal open={reminderOpen} onClose={()=>setReminderOpen(false)}>
         <ReminderPanel events={reminderEvents} sync={reminderSync} resync={resyncReminders}/>
       </Modal>
@@ -1113,14 +1400,26 @@ function App(){
                 :item.content}
             </div>
             {ext&&ext.loading&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>🔍 识别中…</div>}
-            {ext&&!ext.loading&&!ext.error&&ext.school&&<div style={{fontSize:11,color:C.sage,fontWeight:600,marginBottom:6}}>推测：{ext.school}{ext.program?` · ${ext.program}`:""}</div>}
-            {ext&&!ext.loading&&!ext.error&&!ext.school&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>未识别出学校/项目信息</div>}
+            {item.kind==="event"&&ext&&!ext.loading&&!ext.error&&<div style={{fontSize:11,color:ext.title?C.sage:C.mist,fontWeight:ext.title?600:400,marginBottom:6}}>
+              {ext.title?`📅 推测：${ext.title}${ext.date?` · ${ext.date}`:""}${ext.time?` ${ext.time} ${tzLabel(ext.timezone)}`:""}`:"未识别出活动信息"}
+            </div>}
+            {item.kind!=="event"&&ext&&!ext.loading&&!ext.error&&ext.school&&<div style={{fontSize:11,color:C.sage,fontWeight:600,marginBottom:6}}>推测：{ext.school}{ext.program?` · ${ext.program}`:""}</div>}
+            {item.kind!=="event"&&ext&&!ext.loading&&!ext.error&&!ext.school&&<div style={{fontSize:11,color:C.mist,marginBottom:6}}>未识别出学校/项目信息</div>}
             <div style={{fontSize:10,color:C.mist,marginBottom:6}}>{new Date(item.createdAt).toLocaleString()}</div>
             <div style={{display:"flex",gap:6}}>
-              <button onClick={()=>convertInboxItem(item)} disabled={convertingId===item.id}
-                style={{flex:1,padding:"5px 0",borderRadius:6,border:"none",background:convertingId===item.id?C.mist:C.sage,color:C.white,fontSize:11,cursor:convertingId===item.id?"not-allowed":"pointer"}}>
-                {convertingId===item.id?"提取中…":"转成网申项目"}
-              </button>
+              {item.kind==="event"?(
+                <button onClick={()=>convertInboxToEvent(item)} disabled={convertingId===item.id}
+                  style={{flex:1,padding:"5px 0",borderRadius:6,border:"none",background:convertingId===item.id?C.mist:C.sage,color:C.white,fontSize:11,cursor:convertingId===item.id?"not-allowed":"pointer"}}>
+                  {convertingId===item.id?"提取中…":"转成活动"}
+                </button>
+              ):<>
+                <button onClick={()=>convertInboxItem(item)} disabled={convertingId===item.id}
+                  style={{flex:1,padding:"5px 0",borderRadius:6,border:"none",background:convertingId===item.id?C.mist:C.sage,color:C.white,fontSize:11,cursor:convertingId===item.id?"not-allowed":"pointer"}}>
+                  {convertingId===item.id?"提取中…":"转成网申项目"}
+                </button>
+                <button onClick={()=>convertInboxToEvent(item)} disabled={convertingId===item.id}
+                  style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${C.sage}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer"}}>转成活动</button>
+              </>}
               <button onClick={()=>ignoreInboxItem(item)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid #f5dcdc",background:"#fff5f5",color:"#b05050",fontSize:11,cursor:"pointer"}}>忽略</button>
             </div>
           </div>

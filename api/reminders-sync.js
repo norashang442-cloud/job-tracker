@@ -34,11 +34,13 @@ export default async function handler(req, res) {
     .filter(e => e && DATE_RE.test(e.date))
     .map(e => ({
       id: str(e.id, 120),
-      kind: ["followup", "milestone", "deadline", "todo"].includes(e.kind) ? e.kind : "deadline",
+      kind: ["followup", "milestone", "deadline", "todo", "activity"].includes(e.kind) ? e.kind : "deadline",
       title: str(e.title, 200),
       detail: str(e.detail, 300),
       date: e.date,
       time: /^\d{2}:\d{2}$/.test(e.time || "") ? e.time : "",
+      endTime: /^\d{2}:\d{2}$/.test(e.endTime || "") ? e.endTime : "",
+      noAlarm: !!e.noAlarm,
       url: /^https?:\/\//i.test(e.url || "") ? str(e.url, 500) : "",
       remindOn: Array.isArray(e.remindOn) ? e.remindOn.filter(d => DATE_RE.test(d)).slice(0, 10) : [],
       repeatUntilDone: !!e.repeatUntilDone,

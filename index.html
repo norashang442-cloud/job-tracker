@@ -12,6 +12,8 @@
 body{font-family:-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#F2F7F1;color:#1C2E22;}
 /* 按钮、输入框默认用系统控件字体，统一改成继承页面字体：全页只有这一套无衬线体 + 标题用的 SERIF */
 button,input,select,textarea{font-family:inherit;}
+/* 顶部整块（深色导航行 + 浅色信息行）用宋体系衬线体，和 JS 里的 SERIF 一致；下面的看板、表单仍用无衬线体 */
+.hdr-serif{font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STZhongsong','STSong','SimSun',Georgia,serif;}
 button:focus,input:focus,select:focus,textarea:focus{outline:2px solid #5C7A60;outline-offset:1px;}
 ::-webkit-scrollbar{width:6px;height:6px;}
 ::-webkit-scrollbar-track{background:#F2F7F1;}
@@ -480,18 +482,17 @@ function useClock(ms=300000){
 
 // 顶部左栏：日期 + 题记，像一张小摘录
 // 三栏开头统一成「衬线标题 + 一行副标题」，字号、行高、间距一致，三栏的第二部分就能对齐
-function ColTitle({title,sub}){
+function ColTitle({title,aside}){
   return(
-    <div style={{marginBottom:14}}>
-      <div style={{fontFamily:SERIF,fontSize:20,fontWeight:700,color:C.fir,lineHeight:1.4}}>{title}</div>
-      <div style={{fontSize:13,color:C.textLight,lineHeight:1.5,marginTop:2,minHeight:19}}>{sub}</div>
+    <div style={{fontFamily:SERIF,fontSize:20,fontWeight:700,color:C.fir,lineHeight:1.4,marginBottom:12}}>
+      {title}{aside&&<span style={{fontSize:15,fontWeight:400,color:C.textLight,marginLeft:10}}>{aside}</span>}
     </div>
   );
 }
 function DateTitle(){
   useClock();
   const now=new Date();
-  return <ColTitle title={`${now.getMonth()+1}月${now.getDate()}日`} sub={`星期${weekday(todayStr())}`}/>;
+  return <ColTitle title={`${now.getMonth()+1}月${now.getDate()}日`} aside={`星期${weekday(todayStr())}`}/>;
 }
 function Epigraph({lines,by,italic}){
   return(
@@ -513,17 +514,19 @@ function firstDate(values){
   }).filter(Boolean).sort();
   return days[0]||null;
 }
-function DayCount({label,since}){
+function DayCount({label,since,onAccount}){
   useClock();
-  const today=todayStr();
-  const n=since?diffDays(since,today)+1:1;
-  const [,m,d]=(since||today).split("-").map(Number);
-  return <ColTitle title={`${LS_USER?LS_USER+"，":""}今天是你${label}的第 ${n} 天`} sub={since?`从 ${m}月${d}日的第一条记录算起`:"从今天开始记录"}/>;
+  const n=since?diffDays(since,todayStr())+1:1;
+  // 用户名可以点：打开账号设置
+  const name=LS_USER&&<span onClick={onAccount} title="账号设置" style={{cursor:"pointer",borderBottom:`1px dotted ${C.mist}`}}>{LS_USER}</span>;
+  return <ColTitle title={<>{name}{LS_USER&&"，"}今天是你{label}的第 {n} 天</>}/>;
 }
-// 中栏统计数字旁边：账号入口（登录后显示「账号设置」，未登录时高亮「登录 / 注册」）
-function AccountButton({onClick}){
-  const on=!!LS_USER;
-  return <button onClick={onClick} style={{marginLeft:"auto",alignSelf:"center",background:on?C.white:C.sage,color:on?C.textLight:C.white,border:on?`1px solid ${C.border}`:"none",borderRadius:10,padding:"9px 14px",fontSize:13,fontWeight:on?400:700,cursor:"pointer",whiteSpace:"nowrap"}}>{on?"👤 账号设置":"👤 登录 / 注册"}</button>;
+// 账号入口：深色导航行最右端的圆形头像（用户名首字），未登录时是「登录」
+function AccountChip({onClick}){
+  const base={marginLeft:"auto",cursor:"pointer",flexShrink:0,border:`1px solid ${C.reed}`,color:C.frost,background:"rgba(255,255,255,0.08)"};
+  return LS_USER
+    ?<button onClick={onClick} title={`账号设置（${LS_USER}）`} style={{...base,width:34,height:34,borderRadius:"50%",fontSize:15,fontWeight:700}}>{[...LS_USER][0].toUpperCase()}</button>
+    :<button onClick={onClick} title="登录 / 注册" style={{...base,borderRadius:17,padding:"6px 14px",fontSize:13}}>登录</button>;
 }
 
 // 顶部右栏开头：随时段变化的一句问候，和一句克制的当日概况（时间敏感的内容都放在右栏）
@@ -540,7 +543,7 @@ function DayHeader({events}){
   if(n("activity")) parts.push(`${n("activity")} 个活动`);
   const rest=todayItems.length-n("milestone")-n("activity");
   if(rest) parts.push(`${rest} 件事待处理`);
-  return <ColTitle title={greet} sub={parts.length?`今天 ${parts.join("，")}`:"今天没有要处理的事"}/>;
+  return <ColTitle title={greet}/>;
 }
 
 // 秋招页右栏：日程和上方操作按钮的统一宽度，右边缘对齐
@@ -642,11 +645,11 @@ const ART_TERMS=["road","river","journey","autumn","path","boat","morning","brid
 // 顶部中栏：竖排的统计数字
 function StatList({stats}){
   return(
-    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+    <div style={{display:"flex",flexDirection:"column",fontFamily:SERIF,fontSize:15,lineHeight:1.8}}>
       {stats.map(([label,value])=>(
-        <div key={label} style={{display:"flex",alignItems:"baseline",gap:12}}>
-          <span style={{fontFamily:SERIF,fontSize:28,fontWeight:700,color:C.fir,lineHeight:1.1,minWidth:44,textAlign:"right"}}>{value}</span>
-          <span style={{fontSize:13,color:C.textLight}}>{label}</span>
+        <div key={label} style={{display:"flex",alignItems:"baseline",gap:10}}>
+          <span style={{fontWeight:700,color:C.fir,minWidth:28,textAlign:"right"}}>{value}</span>
+          <span style={{color:C.textLight}}>{label}</span>
         </div>
       ))}
     </div>
@@ -1991,7 +1994,7 @@ function App(){
 
   return(
     <div style={{minHeight:"100vh",background:C.cream}}>
-      <div style={{background:C.fir}}>
+      <div className="hdr-serif" style={{background:C.fir}}>
         <div className="top-grid">
           <div className="top-cell" style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
             <Brand/>
@@ -2027,11 +2030,12 @@ function App(){
             {mainTab==="toApply"&&<button onClick={()=>setTaModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14,whiteSpace:"nowrap"}}>＋ 添加待投递</button>}
             {mainTab==="companies"&&<button onClick={()=>setCModal("add")} style={{background:C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14,whiteSpace:"nowrap"}}>＋ 添加关注公司</button>}
           </div>
+          <AccountChip onClick={()=>setAccountOpen(true)}/>
           </div>
         </div>
       </div>
       {/* 浅色信息行：主题色的极淡斜细纹 */}
-      <div style={{background:`repeating-linear-gradient(135deg, ${C.fir}0D 0 1px, transparent 1px 9px), ${C.white}`,borderBottom:`1px solid ${C.border}`}}>
+      <div className="hdr-serif" style={{background:`repeating-linear-gradient(135deg, ${C.fir}0D 0 1px, transparent 1px 9px), ${C.white}`,borderBottom:`1px solid ${C.border}`}}>
         <div className="top-grid">
           <div className="top-cell">
             <DateTitle/>
@@ -2052,21 +2056,18 @@ function App(){
             <BackupHint at={backupAt} hasData={jobs.length+toApply.length+companies.length+acts.length>0} onBackup={exportData}/>
           </div>
           <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`}}>
-            <DayCount label="秋招" since={firstDate([...jobs.map(j=>j.date),...jobs.map(j=>j.id),...toApply.map(t=>t.id),...companies.map(c=>c.id)])}/>
-            <div style={{display:"flex",gap:16}}>
-              <StatList stats={[["已投递",total],["面试中",interviews],["已录用",offers]]}/>
-              <AccountButton onClick={()=>setAccountOpen(true)}/>
-            </div>
+            <DayCount label="秋招" since={firstDate([...jobs.map(j=>j.date),...jobs.map(j=>j.id),...toApply.map(t=>t.id),...companies.map(c=>c.id)])} onAccount={()=>setAccountOpen(true)}/>
+            <StatList stats={[["已投递",total],["面试中",interviews],["已录用",offers]]}/>
           </div>
           <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`,display:"flex",gap:20,alignItems:"flex-start"}}>
           <div style={{width:AGENDA_W,flexShrink:0}}>
             <DayHeader events={reminderEvents}/>
-            {/* 活动必定进入日程，所以入口放在日程上方 */}
-            <button onClick={()=>setMainTab("events")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"8px 12px",borderRadius:10,border:`1px solid ${mainTab==="events"?C.sage:C.border}`,background:mainTab==="events"?C.frost:C.cream,color:C.fir,fontSize:13,fontWeight:700,cursor:"pointer",marginBottom:12}}>
+            <AgendaPanel events={reminderEvents} target="job" onOpen={openFromAgenda}/>
+            {/* 活动入口放在日程下面 */}
+            <button onClick={()=>setMainTab("events")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"8px 12px",borderRadius:10,border:`1px solid ${mainTab==="events"?C.sage:C.border}`,background:mainTab==="events"?C.frost:C.cream,color:C.fir,fontSize:13,fontWeight:700,cursor:"pointer",marginTop:12}}>
               <span>📅 活动{acts.length?` · ${acts.length}`:""}</span>
               <span style={{color:C.textLight,fontWeight:400,fontSize:12}}>查看全部 ›</span>
             </button>
-            <AgendaPanel events={reminderEvents} target="job" onOpen={openFromAgenda}/>
           </div>
           <div className="art-day" style={{flex:1,minWidth:0,display:"flex",justifyContent:"center",alignItems:"center",alignSelf:"stretch"}}><ArtOfDay terms={ART_TERMS} target="job"/></div>
           </div>

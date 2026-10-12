@@ -60,7 +60,8 @@ const INTENTS=["计划投递","长期关注"];
 const WATCH_REASONS=["能力/经验暂时不够，想先提升再投","岗位尚未开放申请，等秋招后续批次","优先级较低，先集中精力投更心仪的岗位","还想再深入了解这家公司/岗位，没决定好","硬性门槛不符合（学历、工作年限、身份限制等）","还没想清楚要不要走这个行业/方向","其他"];
 const SCHEMA_VERSION=1;
 const EMPTY={company:"",position:"",type:"全职",industry:"",url:"",date:new Date().toISOString().slice(0,10),source:"Boss直聘",status:"applied",note:"",milestones:[],companyId:null};
-const EMPTY_TOAPPLY={company:"",position:"",type:"全职",url:"",deadline:"",rolling:false,salary:"",location:"",priority:"中",note:"",intent:"计划投递",watchReason:"",companyId:null};
+const EMPTY_TOAPPLY={company:"",position:"",type:"全职",url:"",deadline:"",rolling:false,salary:"",location:"",priority:"中",note:"",intent:"计划投递",watchReason:"",remindDate:"",remindNote:"",companyId:null};
+const ROLLING_REMIND_DAYS=4;  // 滚动招聘的计划投递岗位，默认几天后提醒
 const EMPTY_COMPANY={company:"",industry:"",url:"",note:""};
 const PRIORITY_ORDER={"高":0,"中":1,"低":2};
 
@@ -99,6 +100,8 @@ function migrateToApply(item){
     note:       item.note       ?? "",
     intent:     INTENTS.includes(item.intent)?item.intent:"计划投递",
     watchReason:item.watchReason?? "",
+    remindDate: item.remindDate ?? "",
+    remindNote: item.remindNote ?? "",
     companyId:  item.companyId  ?? null,
     id:         item.id         ?? Date.now(),
   };
@@ -247,7 +250,7 @@ function ReminderPanel({events,sync,resync}){
 
       {key&&<>
         <div style={section}>📧 每日邮件</div>
-        <div style={{fontSize:12,color:C.textLight,lineHeight:1.6,marginBottom:8}}>每天早上 8 点（北京时间）检查一次，有到期事项才发信。套磁跟进会每天重复提醒，直到你改了状态。</div>
+        <div style={{fontSize:12,color:C.textLight,lineHeight:1.6,marginBottom:8}}>每天早上 8 点（北京时间）检查一次，有到期事项才发信。待投岗位的「提醒我」和套磁跟进到期后会每天重复提醒，直到你处理。</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <a href={`/api/remind?dry=1&key=${encodeURIComponent(key)}`} target="_blank" rel="noopener noreferrer" style={smallBtn}>预览今天的邮件</a>
           <button onClick={sendTest} style={{...smallBtn,background:C.sage,color:C.white,border:"none"}}>发一封测试邮件</button>
@@ -279,6 +282,11 @@ function buildJobEvents(jobs,toApply,today){
   toApply.forEach(t=>{
     if(t.intent!=="计划投递"||t.rolling||!t.deadline||t.deadline<cutoff) return;
     ev.push({id:`ta-${t.id}`,kind:"deadline",title:`${t.company} · ${t.position} 投递截止`,detail:"",date:t.deadline,time:"",url:t.url||"",remindOn:[-7,-1,0].map(n=>addDays(t.deadline,n))});
+  });
+  // 自定义「提醒我」日期：到期后每天重复，直到投出（转到投递追踪）、删除或改日期
+  toApply.forEach(t=>{
+    if(!t.remindDate) return;
+    ev.push({id:`ta-${t.id}-remind`,kind:"todo",title:`${t.company} · ${t.position}`,detail:t.remindNote||(t.rolling?"滚动招聘，越早投越好":t.intent),date:t.remindDate,time:"",url:t.url||"",remindOn:[t.remindDate],repeatUntilDone:true});
   });
   return ev;
 }
@@ -597,7 +605,21 @@ function KanbanCard({job,onEdit,onDel,isDragging,isRejected,isDropTarget,onDragS
   );
 }
 
-function ToApplyCard({item,urgent,expired,daysLeft,priorityColor,onPromote,onEdit,onDel}){
+function RemindRow({item,onSnooze}){
+  if(!item.remindDate) return null;
+  const today=todayStr();
+  const due=today>=item.remindDate;
+  return(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,marginBottom:6,background:due?"#FDECEC":C.cream,borderRadius:7,padding:"4px 8px"}}>
+      <span style={{fontSize:11,color:due?"#c0392b":C.textLight,fontWeight:due?700:400,wordBreak:"break-word"}}>
+        ⏰ {item.remindDate.slice(5)}（{dueLabel(item.remindDate,today)}）{item.remindNote?` · ${item.remindNote}`:""}
+      </span>
+      {due&&<button onClick={onSnooze} title={`提醒日期改到 ${ROLLING_REMIND_DAYS} 天后`} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,color:C.sage,fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}}>推后 {ROLLING_REMIND_DAYS} 天</button>}
+    </div>
+  );
+}
+
+function ToApplyCard({item,urgent,expired,daysLeft,priorityColor,onPromote,onEdit,onDel,onSnooze}){
   const [expanded,setExpanded]=useState(false);
   const isWatching=item.intent==="长期关注";
   const borderColor=urgent?"#e05050":expired?"#bbb":C.border;
@@ -643,6 +665,7 @@ function ToApplyCard({item,urgent,expired,daysLeft,priorityColor,onPromote,onEdi
           </div>
         )
       )}
+      <RemindRow item={item} onSnooze={onSnooze}/>
       {/* Expanded details */}
       <div className={`collapsible ${expanded?"open":"closed"}`}>
         <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginTop:4}}>
@@ -820,12 +843,21 @@ function ToApplyForm({initial,companies,jobs,toApply,onSave,onCancel}){
             <label style={{display:"flex",alignItems:"center",gap:6,marginTop:form.rolling?0:8,fontSize:12,color:C.textLight,cursor:"pointer"}}>
               <input type="checkbox" checked={!!form.rolling} onChange={e=>{
                 const rolling=e.target.checked;
-                setForm(f=>({...f,rolling,deadline:rolling?"":f.deadline}));
+                setForm(f=>({...f,rolling,deadline:rolling?"":f.deadline,
+                  remindDate:rolling&&!f.remindDate?addDays(todayStr(),ROLLING_REMIND_DAYS):f.remindDate}));
               }}/>
               滚动招聘（Rolling Basis，无固定截止日期）
             </label>
           </div>
         )}
+        <div style={{gridColumn:"1/-1",background:C.cream,borderRadius:10,padding:"10px 12px",border:`1px solid ${C.border}`}}>
+          <label style={lbl}>⏰ 提醒我（可选，到期后每天在提醒邮件里出现，直到投出或改日期）</label>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <input type="date" style={{...inp,width:160}} value={form.remindDate||""} onChange={e=>set("remindDate",e.target.value)}/>
+            <input style={{...inp,flex:1,minWidth:160}} value={form.remindNote||""} onChange={e=>set("remindNote",e.target.value)} placeholder="提醒内容，如：去看看开没开 / 本周内投掉"/>
+            {form.remindDate&&<button type="button" onClick={()=>setForm(f=>({...f,remindDate:"",remindNote:""}))} style={{padding:"0 12px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.textLight,fontSize:12,cursor:"pointer"}}>清除</button>}
+          </div>
+        </div>
         <div><label style={lbl}>薪资/待遇</label><input style={inp} value={form.salary||""} onChange={e=>set("salary",e.target.value)} placeholder="如：£30k / 25-30k"/></div>
         <div><label style={lbl}>工作地点</label><input style={inp} value={form.location||""} onChange={e=>set("location",e.target.value)} placeholder="如：London / Remote"/></div>
         <div><label style={lbl}>优先级</label>
@@ -847,7 +879,19 @@ function ToApplyForm({initial,companies,jobs,toApply,onSave,onCancel}){
 
 function App(){
   const [jobs,setJobs]=useState(()=>{try{return JSON.parse(localStorage.getItem("jt4")||"[]").map(migrateJob)}catch{return []}});
-  const [toApply,setToApply]=useState(()=>{try{return JSON.parse(localStorage.getItem("jt4_toApply")||"[]").map(migrateToApply)}catch{return []}});
+  const [toApply,setToApply]=useState(()=>{
+    let items;
+    try{items=JSON.parse(localStorage.getItem("jt4_toApply")||"[]").map(migrateToApply)}catch{return []}
+    // 一次性：给提醒功能上线前已有的「计划投递 + 滚动招聘」岗位补上默认提醒日期
+    try{
+      if(!localStorage.getItem("jt4_rolling_remind_init")){
+        const d=addDays(todayStr(),ROLLING_REMIND_DAYS);
+        items=items.map(t=>t.intent==="计划投递"&&t.rolling&&!t.remindDate?{...t,remindDate:d}:t);
+        localStorage.setItem("jt4_rolling_remind_init","1");
+      }
+    }catch{}
+    return items;
+  });
   const [companies,setCompanies]=useState(()=>{try{return JSON.parse(localStorage.getItem("jt4_companies")||"[]").map(migrateCompany)}catch{return []}});
   const [mainTab,setMainTab]=useState("tracker");
   const [view,setView]=useState("看板");
@@ -988,6 +1032,7 @@ function App(){
     setTaModal(false);
   };
   const delTA=id=>{if(confirm("确认删除？"))setToApply(a=>a.filter(x=>x.id!==id));};
+  const snoozeTA=item=>setToApply(a=>a.map(x=>x.id===item.id?{...x,remindDate:addDays(todayStr(),ROLLING_REMIND_DAYS)}:x));
   const promoteTA=item=>{
     setJobs(j=>[...j,{...EMPTY,company:item.company,position:item.position,type:item.type||"全职",url:item.url,note:item.note,companyId:item.companyId??null,id:Date.now()}]);
     delTA(item.id);
@@ -1241,7 +1286,8 @@ function App(){
                     priorityColor={priorityColor}
                     onPromote={()=>promoteTA(item)}
                     onEdit={()=>setTaModal(item)}
-                    onDel={()=>delTA(item.id)}/>
+                    onDel={()=>delTA(item.id)}
+                    onSnooze={()=>snoozeTA(item)}/>
                 );
               })}
             </div>

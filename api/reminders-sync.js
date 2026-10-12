@@ -34,7 +34,7 @@ export default async function handler(req, res) {
     .filter(e => e && DATE_RE.test(e.date))
     .map(e => ({
       id: str(e.id, 120),
-      kind: ["followup", "milestone", "deadline"].includes(e.kind) ? e.kind : "deadline",
+      kind: ["followup", "milestone", "deadline", "todo"].includes(e.kind) ? e.kind : "deadline",
       title: str(e.title, 200),
       detail: str(e.detail, 300),
       date: e.date,

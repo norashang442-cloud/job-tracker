@@ -36,6 +36,7 @@ const GROUPS = [
   { kind: "milestone", label: "📝 笔试 / 面试", short: "笔试/面试" },
   { kind: "followup", label: "📮 套磁该跟进了", short: "待跟进导师" },
   { kind: "deadline", label: "⏰ 截止日期", short: "截止" },
+  { kind: "todo", label: "📌 待投岗位", short: "待投岗位" },
 ];
 
 function buildEmail(due, today, siteUrl, calendarUrl) {
@@ -65,7 +66,7 @@ function buildEmail(due, today, siteUrl, calendarUrl) {
     <h2 style="font-size:18px;color:#2F4538;margin:0 0 4px">今天要处理的事（${esc(today)}）</h2>
     ${sections || `<p style="color:#7A8F7E;font-size:14px">今天没有到期的提醒。这是一封测试邮件。</p>`}
     <p style="font-size:12px;color:#7A8F7E;margin-top:24px;line-height:1.7">
-      套磁跟进的提醒会每天重复，直到你在页面上把状态改掉（已跟进 / 已回复等）。<br/>
+      套磁跟进和待投岗位的提醒会每天重复，直到你在页面上处理（改状态 / 标记已投 / 改提醒日期）。<br/>
       <a href="${esc(siteUrl)}/phd.html" style="color:#5C7A60">打开申博追踪</a> ·
       <a href="${esc(siteUrl)}/index.html" style="color:#5C7A60">打开秋招追踪</a> ·
       <a href="${esc(calendarUrl)}" style="color:#5C7A60">在 iPhone 上订阅提醒日历</a>

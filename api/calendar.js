@@ -15,7 +15,7 @@ async function kv(cmd) {
 const diffDays = (a, b) => Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 86400000);
 const icsEscape = s => String(s || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 const compact = d => d.replace(/-/g, "");
-const PREFIX = { followup: "📮 跟进", milestone: "📝", deadline: "⏰" };
+const PREFIX = { followup: "📮 跟进", milestone: "📝", deadline: "⏰", todo: "📌" };
 
 // RFC 5545 caps lines at 75 octets; fold on character boundaries so CJK text isn't split mid-byte.
 function fold(line) {

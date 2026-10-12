@@ -56,7 +56,6 @@ button:active:not(:disabled){transform:scale(0.95);}
 .hdr-actions>*{flex:1 1 auto;text-align:center;}
 @media (max-width:1100px){
   .top-grid{grid-template-columns:1fr;}
-  .road-scene{display:none!important;}
   .top-div-dark,.top-div-light{border-left:none!important;}
   .top-cell{padding:10px 14px;}
 }
@@ -303,77 +302,8 @@ function DayHeader({events}){
   );
 }
 
-// 秋招页右栏：日程和上方操作按钮的统一宽度，余下的位置放小风景
+// 秋招页右栏：日程和上方操作按钮的统一宽度，右边缘对齐
 const AGENDA_W=300;
-
-// 右栏的小风景：一条路通向地平线，天空随时段变化——上午日出、下午日高、晚上日落、深夜是当天真实的月相
-const MOON_NAMES=["新月","蛾眉月","上弦月","盈凸月","满月","亏凸月","下弦月","残月"];
-function moonPhase(date){
-  // 0 = 新月，0.5 = 满月；以 2000-01-06 18:14 UTC 的新月为基准，朔望月 29.530588853 天
-  const P=29.530588853;
-  const days=(date.getTime()-Date.UTC(2000,0,6,18,14))/86400000;
-  return (((days%P)+P)%P)/P;
-}
-function MoonShape({cx,cy,r,phase,fill,stroke}){
-  const k=(1-Math.cos(2*Math.PI*phase))/2;           // 被照亮的比例
-  const waxing=phase<0.5, crescent=k<0.5;
-  const rx=r*Math.abs(1-2*k);
-  const outer=waxing?1:0;                              // 亮面在右（盈）或在左（亏）
-  const term=waxing?(crescent?0:1):(crescent?1:0);     // 明暗交界线往哪边鼓
-  return(
-    <g>
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke={stroke} strokeWidth="1"/>
-      {k>0.02&&<path d={`M ${cx} ${cy-r} A ${r} ${r} 0 0 ${outer} ${cx} ${cy+r} A ${rx} ${r} 0 0 ${term} ${cx} ${cy-r} Z`} fill={fill}/>}
-    </g>
-  );
-}
-function RoadScene(){
-  useClock();
-  const now=new Date(),h=now.getHours();
-  const period=h>=6&&h<13?"am":h>=13&&h<18?"pm":h>=18&&h<22?"eve":"night";
-  const HY=86; // 地平线
-  const rays=(cx,cy,r1,r2,from,to,n)=>Array.from({length:n},(_,i)=>{
-    const a=(from+(to-from)*i/(n-1))*Math.PI/180;
-    return <line key={i} x1={cx+r1*Math.cos(a)} y1={cy+r1*Math.sin(a)} x2={cx+r2*Math.cos(a)} y2={cy+r2*Math.sin(a)} stroke={C.reed} strokeWidth="1.1" strokeLinecap="round"/>;
-  });
-  const phase=moonPhase(now);
-  const moonName=MOON_NAMES[Math.round(phase*8)%8];
-  const sun={fill:C.frost,stroke:C.sage,strokeWidth:1.2};
-  return(
-    <div style={{width:"100%",maxWidth:160,textAlign:"center"}}>
-      <svg viewBox="0 0 130 130" width="100%" aria-hidden="true" style={{display:"block"}}>
-        <defs><clipPath id="sky-above"><rect x="0" y="0" width="130" height={HY}/></clipPath></defs>
-        {period==="am"&&<g>
-          <circle cx="30" cy={HY} r="12" {...sun} clipPath="url(#sky-above)"/>
-          {rays(30,HY,16,21,-165,-15,6)}
-        </g>}
-        {period==="pm"&&<g>
-          <circle cx="96" cy="30" r="10" {...sun}/>
-          {rays(96,30,14,19,0,315,8)}
-        </g>}
-        {period==="eve"&&<g>
-          <circle cx="65" cy={HY} r="17" {...sun} clipPath="url(#sky-above)"/>
-          <line x1="36" y1={HY-28} x2="56" y2={HY-28} stroke={C.mist} strokeWidth="1" strokeLinecap="round"/>
-          <line x1="76" y1={HY-34} x2="100" y2={HY-34} stroke={C.mist} strokeWidth="1" strokeLinecap="round"/>
-          <line x1="22" y1={HY-42} x2="38" y2={HY-42} stroke={C.mist} strokeWidth="1" strokeLinecap="round"/>
-        </g>}
-        {period==="night"&&<g>
-          <MoonShape cx={94} cy={30} r={12} phase={phase} fill={C.mist} stroke={C.reed}/>
-          {[[20,20],[44,40],[62,14],[112,58],[30,60],[118,16]].map(([x,y],i)=><circle key={i} cx={x} cy={y} r={i%2?0.9:1.3} fill={C.reed}/>)}
-        </g>}
-        {/* 远山和地平线 */}
-        <path d={`M0 ${HY} Q 16 ${HY-8} 34 ${HY-2} T 70 ${HY-4} T 106 ${HY-7} T 130 ${HY}`} fill="none" stroke={C.mist} strokeWidth="1"/>
-        <line x1="0" y1={HY} x2="130" y2={HY} stroke={C.mist} strokeWidth="0.8"/>
-        {/* 路：有浅色路面，两条边线按透视向地平线收拢，中间一条虚线 */}
-        <path d={`M14 130 L 63 ${HY} L 67 ${HY} L 116 130 Z`} fill={C.frost} fillOpacity="0.55"/>
-        <path d={`M14 130 L 63 ${HY}`} stroke={C.reed} strokeWidth="1.4" strokeLinecap="round"/>
-        <path d={`M116 130 L 67 ${HY}`} stroke={C.reed} strokeWidth="1.4" strokeLinecap="round"/>
-        <path d={`M65 130 L 65 ${HY+2}`} stroke={C.sage} strokeWidth="1.2" strokeDasharray="5 5" strokeOpacity="0.7"/>
-      </svg>
-      {period==="night"&&<div style={{fontFamily:SERIF,fontSize:12,color:C.mist,marginTop:4}}>{moonName}</div>}
-    </div>
-  );
-}
 
 // 顶部中栏：竖排的统计数字
 function StatList({stats}){
@@ -1781,7 +1711,6 @@ function App(){
             </button>
             <AgendaPanel events={reminderEvents} target="job" onOpen={openFromAgenda}/>
           </div>
-          <div className="road-scene" style={{flex:1,minWidth:0,display:"flex",justifyContent:"center",paddingTop:4}}><RoadScene/></div>
           </div>
         </div>
       </div>

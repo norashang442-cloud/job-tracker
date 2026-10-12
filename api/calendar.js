@@ -65,6 +65,21 @@ export default async function handler(req, res) {
   const key = req.query.key;
   if (!key || key !== process.env.INBOX_SECRET) return res.status(401).send("Unauthorized");
 
+  // Gmail strips webcal:// links from emails, so the email links here (https) and this page hands off to webcal://.
+  if (req.query.subscribe === "1") {
+    const host = req.headers["x-forwarded-host"] || req.headers.host;
+    const webcal = `webcal://${host}/api/calendar?key=${encodeURIComponent(key)}`;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.status(200).send(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/><title>订阅提醒日历</title></head>
+<body style="font-family:-apple-system,'PingFang SC',sans-serif;background:#F2F7F1;color:#1C2E22;margin:0;padding:32px 20px;text-align:center">
+<h2 style="color:#2F4538;font-size:20px">📅 订阅求职 / 申博提醒日历</h2>
+<p style="font-size:14px;color:#4A6350;line-height:1.7">如果没有自动弹出订阅窗口，点下面的按钮。<br/>订阅时记得<b>关闭「移除提醒」</b>，否则日历不会响。</p>
+<a href="${webcal}" style="display:inline-block;margin-top:12px;padding:12px 24px;border-radius:10px;background:#2F4538;color:#fff;text-decoration:none;font-weight:700">订阅日历</a>
+<script>location.href=${JSON.stringify(webcal)};</script>
+</body></html>`);
+  }
+
   try {
     const events = [];
     for (const k of ["reminders_job", "reminders_phd"]) {

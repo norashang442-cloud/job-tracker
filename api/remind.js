@@ -89,7 +89,7 @@ export default async function handler(req, res) {
   const dry = req.query.dry === "1";
   const test = req.query.test === "1";
   const siteUrl = process.env.SITE_URL || `https://${req.headers["x-forwarded-host"] || req.headers.host}`;
-  const calendarUrl = `${siteUrl.replace(/^https?:/, "webcal:")}/api/calendar?key=${encodeURIComponent(process.env.INBOX_SECRET || "")}`;
+  const calendarUrl = `${siteUrl}/api/calendar?subscribe=1&key=${encodeURIComponent(process.env.INBOX_SECRET || "")}`;
 
   try {
     const due = (await loadEvents()).filter(e => isDue(e, today));

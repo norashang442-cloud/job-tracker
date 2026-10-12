@@ -297,14 +297,16 @@ function PageSwitch({current}){
   );
 }
 
-// 顶部右栏的日程：本页事项正常显示、点击打开对应记录；另一边的事项读它最近一次保存的本地缓存，
-// 只淡淡显示「这段时间被占了」，不展开细节、不可点。「未来 7 天」默认折叠。
+// 顶部右栏的日程：本页事项正常显示、点击打开对应记录（今天 / 明天最多先显示 4 条）；
+// 另一边的事项读它最近一次保存的本地缓存，按天合并成一行淡淡显示「这段时间被占了」，不可点。「未来 7 天」默认折叠。
+const NEAR_LIMIT=4;
 function AgendaPanel({events,target,onOpen}){
   useClock();
   const other=target==="job"?"phd":"job";
   const otherLabel=other==="job"?"秋招":"申博";
   const [weekOpen,setWeekOpen]=useState(()=>{try{return localStorage.getItem("agenda_week_open")==="1"}catch{return false}});
   const toggleWeek=()=>setWeekOpen(v=>{try{localStorage.setItem("agenda_week_open",v?"0":"1")}catch{} return !v;});
+  const [nearAll,setNearAll]=useState(false);
   const today=todayStr(),tomorrow=addDays(today,1),week=addDays(today,7);
   let otherEvents=[];
   try{otherEvents=JSON.parse(localStorage.getItem("agenda_"+other)||"[]")}catch{}
@@ -313,31 +315,61 @@ function AgendaPanel({events,target,onOpen}){
   // 另一边逾期的待办不占用具体时间段，只显示本页自己的
   const near=all.filter(e=>e.date===today||e.date===tomorrow||(e.mine&&e.repeatUntilDone&&e.date<today));
   const later=all.filter(e=>e.date>tomorrow&&e.date<=week);
-  const row=(e,nearCol)=>{
-    const when=nearCol?(e.date<today?`逾期${diffDays(e.date,today)}天`:e.date===today?"今天":"明天"):`${e.date.slice(5)} 周${weekday(e.date)}`;
-    const time=e.time?` ${e.time}${e.endTime?`–${e.endTime}`:""}`:"";
-    if(!e.mine) return(
-      <div key={"o-"+e.id} style={{display:"flex",gap:8,fontSize:11,color:C.mist,padding:"2px 0"}}>
-        <span style={{width:62,flexShrink:0}}>{when}</span>
-        <span style={{wordBreak:"break-word"}}><span style={{border:`1px solid ${C.border}`,borderRadius:4,padding:"0 4px",marginRight:5}}>{otherLabel}</span>{e.title}{time}</span>
-      </div>
-    );
-    return(
-      <div key={e.id} onClick={()=>onOpen(e)} title={e.detail||"点击打开"} style={{display:"flex",gap:8,fontSize:13,padding:"4px 6px",margin:"0 -6px",borderRadius:7,cursor:"pointer"}}
-        onMouseOver={ev=>ev.currentTarget.style.background=C.cream} onMouseOut={ev=>ev.currentTarget.style.background="transparent"}>
-        <span style={{width:62,flexShrink:0,fontSize:12,fontWeight:700,color:e.date<=today?"#c0392b":C.textLight}}>{when}</span>
-        <span style={{color:C.text,wordBreak:"break-word"}}>{KIND_ICON[e.kind]||"•"} {e.title}<span style={{color:C.sage,fontWeight:600}}>{time}</span></span>
-      </div>
-    );
+  const whenOf=(date,nearCol)=>nearCol?(date<today?`逾期${diffDays(date,today)}天`:date===today?"今天":"明天"):`${date.slice(5)} 周${weekday(date)}`;
+
+  // 本页条目逐条列出；另一边的条目在它当天第一次出现的位置合并成一行
+  const lines=list=>{
+    const out=[],groups={};
+    list.forEach(e=>{
+      if(e.mine){out.push({e});return;}
+      if(!groups[e.date]){groups[e.date]=[];out.push({date:e.date,items:groups[e.date]});}
+      groups[e.date].push(e);
+    });
+    return out;
   };
+  const render=(list,nearCol,limit)=>{
+    let shown=0,hidden=0;
+    const rows=lines(list).map(l=>{
+      if(!l.e){
+        const one=l.items.length===1?l.items[0]:null;
+        return(
+          <div key={"o-"+l.date} style={{display:"flex",gap:8,fontSize:11,color:C.mist,padding:"2px 0"}}>
+            <span style={{width:62,flexShrink:0}}>{whenOf(l.date,nearCol)}</span>
+            <span style={{wordBreak:"break-word"}}>
+              <span style={{border:`1px solid ${C.border}`,borderRadius:4,padding:"0 4px",marginRight:5}}>{otherLabel}</span>
+              {one?`${one.title}${one.time?` ${one.time}`:""}`:`${l.items.length} 项`}
+            </span>
+          </div>
+        );
+      }
+      const e=l.e;
+      if(limit&&shown>=limit){hidden++;return null;}
+      shown++;
+      const time=e.time?` ${e.time}${e.endTime?`–${e.endTime}`:""}`:"";
+      return(
+        <div key={e.id} onClick={()=>onOpen(e)} title={e.detail||"点击打开"} style={{display:"flex",gap:8,fontSize:13,padding:"4px 6px",margin:"0 -6px",borderRadius:7,cursor:"pointer"}}
+          onMouseOver={ev=>ev.currentTarget.style.background=C.cream} onMouseOut={ev=>ev.currentTarget.style.background="transparent"}>
+          <span style={{width:62,flexShrink:0,fontSize:12,fontWeight:700,color:e.date<=today?"#c0392b":C.textLight}}>{whenOf(e.date,nearCol)}</span>
+          <span style={{color:C.text,wordBreak:"break-word"}}>{KIND_ICON[e.kind]||"•"} {e.title}<span style={{color:C.sage,fontWeight:600}}>{time}</span></span>
+        </div>
+      );
+    });
+    return {rows,hidden};
+  };
+  const nearView=render(near,true,nearAll?0:NEAR_LIMIT);
   return(
     <div>
       <div style={{fontSize:13,fontWeight:700,color:C.fir,marginBottom:6}}>🗓 今天 / 明天</div>
-      {near.length?near.map(e=>row(e,true)):<div style={{fontSize:12,color:C.mist}}>今明两天没有安排</div>}
+      {near.length?nearView.rows:<div style={{fontSize:12,color:C.mist}}>今明两天没有安排</div>}
+      {(nearView.hidden>0||nearAll)&&(
+        <div onClick={()=>setNearAll(v=>!v)} style={{fontSize:12,color:C.sage,cursor:"pointer",marginTop:2}}>
+          {nearAll?"收起 ▲":`还有 ${nearView.hidden} 项 ▼`}
+        </div>
+      )}
       <div onClick={toggleWeek} style={{marginTop:10,fontSize:12,fontWeight:700,color:C.moss,cursor:"pointer"}}>
         未来 7 天 · {later.filter(e=>e.mine).length} {weekOpen?"▲":"▼"}
       </div>
-      {weekOpen&&<div style={{marginTop:4}}>{later.length?later.map(e=>row(e,false)):<div style={{fontSize:12,color:C.mist}}>未来一周没有安排</div>}</div>}
+      {weekOpen&&<div style={{marginTop:4}}>{later.length?render(later,false,0).rows:<div style={{fontSize:12,color:C.mist}}>未来一周没有安排</div>}</div>}
     </div>
   );
 }

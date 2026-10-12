@@ -222,7 +222,11 @@ function AgendaPanel({events,target,onOpen}){
   const otherLabel=other==="job"?"秋招":"申博";
   const [weekOpen,setWeekOpen]=useState(()=>{try{return localStorage.getItem("agenda_week_open")==="1"}catch{return false}});
   const toggleWeek=()=>setWeekOpen(v=>{try{localStorage.setItem("agenda_week_open",v?"0":"1")}catch{} return !v;});
+  const [nearOpen,setNearOpen]=useState(()=>{try{return localStorage.getItem("agenda_near_open")!=="0"}catch{return true}});
+  const toggleNear=()=>setNearOpen(v=>{try{localStorage.setItem("agenda_near_open",v?"0":"1")}catch{} return !v;});
   const [nearAll,setNearAll]=useState(false);
+  const [openGroups,setOpenGroups]=useState({});
+  const toggleGroup=k=>setOpenGroups(g=>({...g,[k]:!g[k]}));
   const today=todayStr(),tomorrow=addDays(today,1),week=addDays(today,7);
   let otherEvents=[];
   try{otherEvents=JSON.parse(localStorage.getItem("agenda_"+other)||"[]")}catch{}
@@ -248,13 +252,23 @@ function AgendaPanel({events,target,onOpen}){
     const rows=lines(list).map(l=>{
       if(!l.e){
         const one=l.items.length===1?l.items[0]:null;
+        const key=(nearCol?"n-":"w-")+l.date;
+        const open=!!openGroups[key];
+        const label=it=>`${it.title}${it.time?` ${it.time}`:""}`;
         return(
-          <div key={"o-"+l.date} style={{display:"flex",gap:8,fontSize:11,color:C.mist,padding:"2px 0"}}>
-            <span style={{width:62,flexShrink:0}}>{whenOf(l.date,nearCol)}</span>
-            <span style={{wordBreak:"break-word"}}>
-              <span style={{border:`1px solid ${C.border}`,borderRadius:4,padding:"0 4px",marginRight:5}}>{otherLabel}</span>
-              {one?`${one.title}${one.time?` ${one.time}`:""}`:`${l.items.length} 项`}
-            </span>
+          <div key={"o-"+key} style={{fontSize:11,color:C.mist,padding:"2px 0"}}>
+            <div onClick={one?undefined:()=>toggleGroup(key)} style={{display:"flex",gap:8,cursor:one?"default":"pointer"}}>
+              <span style={{width:62,flexShrink:0}}>{whenOf(l.date,nearCol)}</span>
+              <span style={{wordBreak:"break-word"}}>
+                <span style={{border:`1px solid ${C.border}`,borderRadius:4,padding:"0 4px",marginRight:5}}>{otherLabel}</span>
+                {one?label(one):`${l.items.length} 项 ${open?"▲":"▼"}`}
+              </span>
+            </div>
+            {!one&&open&&(
+              <div style={{paddingLeft:70,marginTop:2}}>
+                {l.items.map(it=><div key={it.id} style={{padding:"1px 0",wordBreak:"break-word"}}>{label(it)}</div>)}
+              </div>
+            )}
           </div>
         );
       }
@@ -275,15 +289,17 @@ function AgendaPanel({events,target,onOpen}){
   const nearView=render(near,true,nearAll?0:NEAR_LIMIT);
   return(
     <div>
-      <div style={{fontSize:13,fontWeight:700,color:C.fir,marginBottom:6}}>🗓 今天 / 明天</div>
-      {near.length?nearView.rows:<div style={{fontSize:12,color:C.mist}}>今明两天没有安排</div>}
-      {(nearView.hidden>0||nearAll)&&(
+      <div onClick={toggleNear} style={{fontSize:13,fontWeight:700,color:C.fir,marginBottom:6,cursor:"pointer"}}>
+        🗓 今天 / 明天 · {near.filter(e=>e.mine).length} {nearOpen?"▲":"▼"}
+      </div>
+      {nearOpen&&(near.length?nearView.rows:<div style={{fontSize:12,color:C.mist}}>今明两天没有安排</div>)}
+      {nearOpen&&(nearView.hidden>0||nearAll)&&(
         <div onClick={()=>setNearAll(v=>!v)} style={{fontSize:12,color:C.sage,cursor:"pointer",marginTop:2}}>
           {nearAll?"收起 ▲":`还有 ${nearView.hidden} 项 ▼`}
         </div>
       )}
-      <div onClick={toggleWeek} style={{marginTop:10,fontSize:12,fontWeight:700,color:C.moss,cursor:"pointer"}}>
-        未来 7 天 · {later.filter(e=>e.mine).length} {weekOpen?"▲":"▼"}
+      <div onClick={toggleWeek} style={{marginTop:12,fontSize:13,fontWeight:700,color:C.fir,cursor:"pointer"}}>
+        🗓 未来 7 天 ·{later.filter(e=>e.mine).length} {weekOpen?"▲":"▼"}
       </div>
       {weekOpen&&<div style={{marginTop:4}}>{later.length?render(later,false,0).rows:<div style={{fontSize:12,color:C.mist}}>未来一周没有安排</div>}</div>}
     </div>

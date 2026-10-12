@@ -284,7 +284,7 @@ function DayCount({label,since}){
 function DayHeader({events}){
   useClock();
   const h=new Date().getHours();
-  const greet=h>=6&&h<13?"上午好，从最要紧的一件开始":h>=13&&h<18?"下午好，接着往下推一推":h>=18&&h<22?"晚上好，把今天收个尾":"夜深了，今天就到这里";
+  const greet=h>=6&&h<13?"上午好，先挑一件事开始吧":h>=13&&h<18?"下午好，进度怎么样了？":h>=18&&h<22?"晚上好，记得看看明天的计划":"夜深了，明天再继续吧";
   const today=todayStr();
   const todayItems=events.filter(e=>e.date===today||(e.repeatUntilDone&&e.date<today));
   const n=k=>todayItems.filter(e=>e.kind===k).length;

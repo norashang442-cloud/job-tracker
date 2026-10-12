@@ -9,11 +9,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'SimHei','黑体','Heiti SC','STHeiti',sans-serif;background:#F1F4F9;color:#1C2433;}
+/* 英文字体排在前面：英文用 Calibri / Times New Roman，中文自动落到后面的黑体 / 宋体 */
+body{font-family:Calibri,'SimHei','黑体','Heiti SC','STHeiti',sans-serif;background:#F1F4F9;color:#1C2433;}
 /* 按钮、输入框默认用系统控件字体，统一改成继承页面字体：全页只有这一套无衬线体 + 标题用的 SERIF */
 button,input,select,textarea{font-family:inherit;}
 /* 深色导航行整行用宋体系衬线体（和 JS 里的 SERIF 一致）：名字、切换、流程标签、操作按钮、账号 */
-.nav-serif{font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STZhongsong','STSong','SimSun',Georgia,serif;}
+.nav-serif{font-family:'Times New Roman','Noto Serif SC','Source Han Serif SC','Songti SC','STZhongsong','STSong','SimSun',serif;}
 button:focus,input:focus,select:focus,textarea:focus{outline:2px solid #5A7BA6;outline-offset:1px;}
 ::-webkit-scrollbar{width:6px;height:6px;}
 ::-webkit-scrollbar-track{background:#F1F4F9;}
@@ -374,7 +375,7 @@ function useReminderSync(target,events){
 const KIND_ICON={milestone:"📝",activity:"🎤",todo:"📌",deadline:"⏰",followup:"📮"};
 const weekday=d=>"日一二三四五六"[new Date(d+"T00:00:00").getDay()];
 
-const SERIF="'Noto Serif SC','Source Han Serif SC','Songti SC','STZhongsong','STSong','SimSun',Georgia,serif";
+const SERIF="'Times New Roman','Noto Serif SC','Source Han Serif SC','Songti SC','STZhongsong','STSong','SimSun',serif";
 
 // 「在路上」：名字 + 一条延伸向远处的路，颜色跟随页面主题
 function Brand({label="在路上",italic=false,size=24}){

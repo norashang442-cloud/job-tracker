@@ -222,15 +222,15 @@ const weekday=d=>"日一二三四五六"[new Date(d+"T00:00:00").getDay()];
 const SERIF="'Noto Serif SC','Source Han Serif SC','Songti SC','STZhongsong','STSong','SimSun',Georgia,serif";
 
 // 「在路上」：名字 + 一条延伸向远处的路，颜色跟随页面主题
-function Brand(){
+function Brand({label="在路上",italic=false}){
   return(
     <div style={{display:"flex",alignItems:"center",gap:8,marginRight:4}}>
-      <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+      <svg width="30" height="30" viewBox="0 0 26 26" fill="none" aria-hidden="true">
         <circle cx="13" cy="13" r="12" stroke={C.mist} strokeWidth="1.2"/>
         <path d="M7 21 C 9 15, 15 15, 12.5 9.5 S 15 5.5, 16.5 5" stroke={C.frost} strokeWidth="1.6" strokeLinecap="round"/>
         <path d="M11 21 C 13 16.5, 18 15.5, 15.5 10 S 17 6.5, 17.5 5.5" stroke={C.reed} strokeWidth="1.1" strokeLinecap="round"/>
       </svg>
-      <span style={{fontFamily:SERIF,color:C.frost,fontSize:19,fontWeight:700,letterSpacing:2,whiteSpace:"nowrap"}}>在路上</span>
+      <span style={{fontFamily:SERIF,color:C.frost,fontSize:24,fontWeight:700,letterSpacing:italic?0.5:2,fontStyle:italic?"italic":"normal",whiteSpace:"nowrap"}}>{label}</span>
     </div>
   );
 }
@@ -260,7 +260,7 @@ function Greeting({events,epigraph,epigraphBy,epigraphItalic}){
       <div style={{fontFamily:SERIF,fontSize:24,fontWeight:700,color:C.fir,letterSpacing:1}}>
         {greet}，{now.getMonth()+1} 月 {now.getDate()} 日 · 周{weekday(today)}
       </div>
-      <div style={{fontSize:13,color:C.textLight,marginTop:5}}>{parts.length?`今天 ${parts.join("，")}`:"今天没有到期的事项"}</div>
+      {parts.length>0&&<div style={{fontSize:13,color:C.textLight,marginTop:5}}>今天 {parts.join("，")}</div>}
       <div style={{fontFamily:SERIF,fontSize:13,color:C.mist,marginTop:12,lineHeight:1.7,fontStyle:epigraphItalic?"italic":"normal"}}>
         {epigraph.map((line,i)=><div key={i}>{line}</div>)}
         <div style={{fontStyle:"normal",fontSize:12,marginTop:2}}>—— {epigraphBy}</div>

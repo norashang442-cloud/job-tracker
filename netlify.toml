@@ -1,11 +1,13 @@
 # Netlify 只作国内访问的中转：*.vercel.app 在国内被屏蔽，*.netlify.app 一般能打开。
-# 页面由 Netlify 直接提供；/api/* 原样转发到 Vercel 上的接口（服务器之间转发，不受屏蔽影响），
-# 数据仍存在原来的 Vercel KV 里。
+# 所有请求（页面和 /api/*）都原样转发到 Vercel（服务器之间转发，不受屏蔽影响），
+# 所以页面永远是 Vercel 上的最新版，数据也还是原来那份。
 [build]
   publish = "."
+  # Netlify 免费版按部署扣 credits。只有这个文件变了才重新部署，其余 push 只部署 Vercel。
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- netlify.toml"
 
 [[redirects]]
-  from = "/api/*"
-  to = "https://job-tracker-iota-blue.vercel.app/api/:splat"
+  from = "/*"
+  to = "https://job-tracker-iota-blue.vercel.app/:splat"
   status = 200
   force = true

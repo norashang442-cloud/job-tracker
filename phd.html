@@ -54,6 +54,7 @@ button:active:not(:disabled){transform:scale(0.95);}
 .top-cell{padding:14px 20px;min-width:0;}
 .top-div-dark{border-left:1px solid rgba(255,255,255,0.16);}
 .hdr-actions>*{flex:1 1 auto;text-align:center;}
+.wf-tabs>.mtab{flex:1 1 auto;}
 @media (max-width:1100px){
   .top-grid{grid-template-columns:1fr;}
   .top-div-dark,.top-div-light{border-left:none!important;}
@@ -220,6 +221,8 @@ function DayHeader({events}){
 
 // 右栏：日程和上方操作按钮的统一宽度，右边缘对齐（与秋招页一致）
 const AGENDA_W=300;
+// 中栏流程标签组的统一宽度，两个页面一致（秋招三个标签带角标时约 317px）
+const TABS_W=320;
 
 // 顶部中栏：竖排的统计数字
 function StatList({stats}){
@@ -1413,7 +1416,7 @@ function App(){
           </div>
           <div className="top-cell top-div-dark" style={{display:"flex",alignItems:"center"}}>
             <div className="tabscroll">
-              <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4,flexShrink:0}}>
+              <div className="wf-tabs" style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4,flexShrink:0,width:TABS_W}}>
                 <button className="mtab" style={mainTabBtn(mainTab==="professors")} onClick={()=>setMainTab("professors")}>
                   套磁记录
                   {professors.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{professors.length}</span>}

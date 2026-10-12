@@ -264,11 +264,27 @@ function Epigraph({lines,by,italic}){
   );
 }
 
-// 顶部右栏开头：问候和一句克制的当日概况（时间敏感的内容都放在右栏）
+// 中栏标题：「秋招第 N 天」，从最早一条记录算起（日期字符串，或 Date.now() 生成的记录 id）
+function firstDate(values){
+  const days=values.map(v=>{
+    if(typeof v==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+    if(typeof v==="number"&&v>1577836800000&&v<Date.now()+86400000){const d=new Date(v);return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;}
+    return null;
+  }).filter(Boolean).sort();
+  return days[0]||null;
+}
+function DayCount({label,since}){
+  useClock();
+  if(!since) return null;
+  return <div style={{fontFamily:SERIF,fontSize:18,fontWeight:700,color:C.fir,marginBottom:12}}>{label}第 {diffDays(since,todayStr())+1} 天</div>;
+}
+
+// 顶部右栏开头：随时段变化的一句问候，和一句克制的当日概况（时间敏感的内容都放在右栏）
+// 上午 6–13 点，下午 13–18 点，晚上 18–22 点，深夜 22–6 点
 function DayHeader({events}){
   useClock();
   const h=new Date().getHours();
-  const greet=h<5?"夜深了":h<11?"早上好":h<13?"中午好":h<18?"下午好":"晚上好";
+  const greet=h>=6&&h<13?"上午好，今天的安排":h>=13&&h<18?"下午好，今天还剩这些":h>=18&&h<22?"晚上好，看看明天":"夜深了，早点休息";
   const today=todayStr();
   const todayItems=events.filter(e=>e.date===today||(e.repeatUntilDone&&e.date<today));
   const n=k=>todayItems.filter(e=>e.kind===k).length;
@@ -279,7 +295,7 @@ function DayHeader({events}){
   if(rest) parts.push(`${rest} 件事待处理`);
   return(
     <div style={{marginBottom:12}}>
-      <div style={{fontFamily:SERIF,fontSize:20,fontWeight:700,color:C.fir}}>{greet}</div>
+      <div style={{fontFamily:SERIF,fontSize:18,fontWeight:700,color:C.fir}}>{greet}</div>
       {parts.length>0&&<div style={{fontSize:13,color:C.textLight,marginTop:3}}>今天 {parts.join("，")}</div>}
     </div>
   );
@@ -1674,7 +1690,8 @@ function App(){
             </button>
             </div>
           </div>
-          <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`,display:"flex",alignItems:"center"}}>
+          <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",justifyContent:"center"}}>
+            <DayCount label="秋招" since={firstDate([...jobs.map(j=>j.date),...jobs.map(j=>j.id),...toApply.map(t=>t.id),...companies.map(c=>c.id)])}/>
             <StatList stats={[["已投递",total],["面试中",interviews],["已录用",offers]]}/>
           </div>
           <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`}}>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>申博进度追踪</title>
+<title>在路上 · 申博</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -124,6 +124,60 @@ function useReminderSync(target,events){
 
 const KIND_ICON={milestone:"📝",activity:"🎤",todo:"📌",deadline:"⏰",followup:"📮"};
 const weekday=d=>"日一二三四五六"[new Date(d+"T00:00:00").getDay()];
+
+const SERIF="'Noto Serif SC','Source Han Serif SC','Songti SC','STZhongsong','STSong','SimSun',Georgia,serif";
+
+// 「在路上」：名字 + 一条延伸向远处的路，颜色跟随页面主题
+function Brand(){
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:8,marginRight:4}}>
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+        <circle cx="13" cy="13" r="12" stroke={C.mist} strokeWidth="1.2"/>
+        <path d="M7 21 C 9 15, 15 15, 12.5 9.5 S 15 5.5, 16.5 5" stroke={C.frost} strokeWidth="1.6" strokeLinecap="round"/>
+        <path d="M11 21 C 13 16.5, 18 15.5, 15.5 10 S 17 6.5, 17.5 5.5" stroke={C.reed} strokeWidth="1.1" strokeLinecap="round"/>
+      </svg>
+      <span style={{fontFamily:SERIF,color:C.frost,fontSize:19,fontWeight:700,letterSpacing:2,whiteSpace:"nowrap"}}>在路上</span>
+    </div>
+  );
+}
+
+// 页头：问候 + 日期，一句克制的当日概况，题记；右侧是精简的统计数字
+function PageHero({events,stats,epigraph,epigraphBy,epigraphItalic}){
+  const now=new Date();
+  const h=now.getHours();
+  const greet=h<5?"夜深了":h<11?"早上好":h<13?"中午好":h<18?"下午好":"晚上好";
+  const today=todayStr();
+  const todayItems=events.filter(e=>e.date===today||(e.repeatUntilDone&&e.date<today));
+  const n=k=>todayItems.filter(e=>e.kind===k).length;
+  const parts=[];
+  if(n("milestone")) parts.push(`${n("milestone")} 场笔试 / 面试`);
+  if(n("activity")) parts.push(`${n("activity")} 个活动`);
+  const rest=todayItems.length-n("milestone")-n("activity");
+  if(rest) parts.push(`${rest} 件事待处理`);
+  const summary=parts.length?`今天 ${parts.join("，")}`:"今天没有到期的事项";
+  return(
+    <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:20,flexWrap:"wrap",margin:"6px 2px 20px"}}>
+      <div style={{minWidth:0}}>
+        <div style={{fontFamily:SERIF,fontSize:26,fontWeight:700,color:C.fir,letterSpacing:1}}>
+          {greet}，{now.getMonth()+1} 月 {now.getDate()} 日 · 周{weekday(today)}
+        </div>
+        <div style={{fontSize:14,color:C.textLight,marginTop:6}}>{summary}</div>
+        <div style={{fontFamily:SERIF,fontSize:13,color:C.mist,marginTop:12,lineHeight:1.7,fontStyle:epigraphItalic?"italic":"normal"}}>
+          {epigraph.map((line,i)=><div key={i}>{line}</div>)}
+          <div style={{fontStyle:"normal",fontSize:12,marginTop:2}}>—— {epigraphBy}</div>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:26}}>
+        {stats.map(([label,value])=>(
+          <div key={label} style={{textAlign:"center"}}>
+            <div style={{fontFamily:SERIF,fontSize:26,fontWeight:700,color:C.fir,lineHeight:1.1}}>{value}</div>
+            <div style={{fontSize:11,color:C.textLight,marginTop:4,whiteSpace:"nowrap"}}>{label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // 秋招 / 申博切换：放在顶部栏最左边，表示「换一个工作区」，和本页的标签页分开
 function PageSwitch({current}){
@@ -1261,6 +1315,7 @@ function App(){
   return(
     <div style={{minHeight:"100vh",background:C.cream}}>
       <div className="hdr" style={{background:C.fir,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+        <Brand/>
         <PageSwitch current="phd"/>
         <span style={{width:1,alignSelf:"stretch",background:"rgba(255,255,255,0.22)",margin:"6px 0"}}/>
         <div className="tabscroll" style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1295,6 +1350,9 @@ function App(){
       </div>
 
       <div style={{maxWidth:1120,margin:"0 auto",padding:"20px 14px"}}>
+        <PageHero events={reminderEvents} epigraphItalic
+          stats={[["已套磁",professors.filter(p=>p.status!=="pending").length],["有回复",professors.filter(p=>["replied","talked","success"].includes(p.status)).length],["网申中",applications.filter(a=>a.status==="submitted"||a.status==="review").length]]}
+          epigraph={["Live the questions now."]} epigraphBy="Rainer Maria Rilke, Letters to a Young Poet"/>
         <AgendaCard events={reminderEvents} target="phd" onOpen={openFromAgenda} onSettings={()=>setReminderOpen(true)}/>
 
         {mainTab==="professors"&&(

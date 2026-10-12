@@ -44,13 +44,20 @@ function alarms(e) {
   }).flat();
 }
 
+// Event times are Beijing wall-clock (the page converts activities into the user's own timezone, which is UTC+8).
+// Tagging them with TZID instead of leaving them floating stops Outlook from reading them as UTC.
+const TZID = "Asia/Shanghai";
+const VTIMEZONE = [
+  "BEGIN:VTIMEZONE", `TZID:${TZID}`, "BEGIN:STANDARD", "DTSTART:19700101T000000",
+  "TZOFFSETFROM:+0800", "TZOFFSETTO:+0800", "TZNAME:CST", "END:STANDARD", "END:VTIMEZONE",
+];
+
 function buildEvent(e, dtstamp) {
   let dt;
   if (e.time) {
-    // Floating local time: the page already converted event times into the user's own timezone.
-    const start = `DTSTART:${compact(e.date)}T${e.time.replace(":", "")}00`;
+    const start = `DTSTART;TZID=${TZID}:${compact(e.date)}T${e.time.replace(":", "")}00`;
     dt = e.endTime && e.endTime > e.time
-      ? [start, `DTEND:${compact(e.date)}T${e.endTime.replace(":", "")}00`]
+      ? [start, `DTEND;TZID=${TZID}:${compact(e.date)}T${e.endTime.replace(":", "")}00`]
       : [start, "DURATION:PT1H"];
   } else {
     const end = new Date(e.date + "T00:00:00Z"); end.setUTCDate(end.getUTCDate() + 1);
@@ -69,13 +76,14 @@ function buildEvent(e, dtstamp) {
 }
 
 export default async function handler(req, res) {
+  // vercel.json rewrites /api/calendar/<key>.ics here — new Outlook won't subscribe to the ?key= form.
   const key = req.query.key;
   if (!key || key !== process.env.INBOX_SECRET) return res.status(401).send("Unauthorized");
 
   // Gmail strips webcal:// links from emails, so the email links here (https) and this page hands off to webcal://.
   if (req.query.subscribe === "1") {
     const host = req.headers["x-forwarded-host"] || req.headers.host;
-    const webcal = `webcal://${host}/api/calendar?key=${encodeURIComponent(key)}`;
+    const webcal = `webcal://${host}/api/calendar/${encodeURIComponent(key)}.ics`;
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.status(200).send(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/><title>订阅提醒日历</title></head>
@@ -88,21 +96,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    const events = [];
-    for (const k of ["reminders_job", "reminders_phd"]) {
-      const raw = await kv(["GET", k]);
-      if (raw) events.push(...(JSON.parse(raw).events || []));
-    }
+    // One round trip: Outlook's fetcher gives up quickly on slow feeds.
+    const events = (await kv(["MGET", "reminders_job", "reminders_phd"]) || [])
+      .flatMap(raw => (raw ? JSON.parse(raw).events || [] : []));
     const dtstamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
     const lines = [
-      "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//job-tracker//reminders//CN", "CALSCALE:GREGORIAN",
-      "X-WR-CALNAME:求职/申博提醒", "X-PUBLISHED-TTL:PT1H", "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+      "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//job-tracker//reminders//CN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+      "X-WR-CALNAME:求职/申博提醒", `X-WR-TIMEZONE:${TZID}`, "X-PUBLISHED-TTL:PT1H", "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+      ...VTIMEZONE,
       ...events.flatMap(e => buildEvent(e, dtstamp)),
       "END:VCALENDAR",
     ];
     res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    res.setHeader("Content-Disposition", 'inline; filename="reminders.ics"');
     res.setHeader("Cache-Control", "no-store");
-    res.status(200).send(lines.map(fold).join("\r\n"));
+    res.status(200).send(lines.map(fold).join("\r\n") + "\r\n");
   } catch (err) {
     res.status(500).send("Failed: " + err.message);
   }

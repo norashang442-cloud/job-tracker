@@ -447,7 +447,9 @@ function ReminderPanel({sync,resync}){
   const [msg,setMsg]=useState("");
   const [copied,setCopied]=useState(false);
   const key=getKey();
-  const calUrl=`webcal://${location.host}/api/calendar?key=${encodeURIComponent(key)}`;
+  const calPath=`${location.host}/api/calendar/${encodeURIComponent(key)}.ics`;
+  const [calTab,setCalTab]=useState("ios");
+  const calUrl=calTab==="ios"?`webcal://${calPath}`:`https://${calPath}`;
   const setKey=()=>{const k=prompt("请输入收件箱密钥（部署时在 Vercel 环境变量 INBOX_SECRET 里设置的值）");if(k){localStorage.setItem("jt4_inbox_key",k);resync();}};
   const sendTest=async()=>{
     setMsg("发送中…");
@@ -482,7 +484,12 @@ function ReminderPanel({sync,resync}){
         </div>
 
         <div style={section}>📅 日历订阅（秋招 + 申博）</div>
-        <div style={{fontSize:12,color:C.textLight,lineHeight:1.6,marginBottom:8}}>最方便的方法：在 iPhone 上打开任意一封提醒邮件，点底部的「订阅提醒日历」。也可以复制下面的地址，在 iPhone「日历」设置里选「添加已订阅的日历」。订阅时记得<b>关闭「移除提醒」</b>，否则日历不会响。</div>
+        <div style={{display:"flex",gap:6,marginBottom:8}}>
+          {[["ios","iPhone / Mac"],["web","Outlook / Google 日历"]].map(([k,l])=><button key={k} onClick={()=>setCalTab(k)} style={{...smallBtn,...(calTab===k?{background:C.sage,color:C.white,border:"none"}:{})}}>{l}</button>)}
+        </div>
+        <div style={{fontSize:12,color:C.textLight,lineHeight:1.6,marginBottom:8}}>{calTab==="ios"
+          ?<>最方便的方法：在 iPhone 上打开任意一封提醒邮件，点底部的「订阅提醒日历」。也可以复制下面的地址，在 iPhone「日历」设置里选「添加已订阅的日历」。订阅时记得<b>关闭「移除提醒」</b>，否则日历不会响。</>
+          :<>Outlook：「添加日历 → 从 Internet 订阅」，粘贴下面的地址。Google 日历：「其他日历 ＋ → 通过网址添加」。这两家只显示日程、<b>不会响铃</b>（只有苹果日历会执行闹钟），且几小时才刷新一次。</>}</div>
         <div style={{display:"flex",gap:8}}>
           <input readOnly value={calUrl} onFocus={e=>e.target.select()} style={{...inp,fontSize:11,flex:1}}/>
           <button onClick={copy} style={smallBtn}>{copied?"已复制":"复制"}</button>

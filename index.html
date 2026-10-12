@@ -9,11 +9,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#F2F7F1;color:#1C2E22;}
+body{font-family:'SimHei','黑体','Heiti SC','STHeiti',sans-serif;background:#F2F7F1;color:#1C2E22;}
 /* 按钮、输入框默认用系统控件字体，统一改成继承页面字体：全页只有这一套无衬线体 + 标题用的 SERIF */
 button,input,select,textarea{font-family:inherit;}
-/* 顶部整块（深色导航行 + 浅色信息行）用宋体系衬线体，和 JS 里的 SERIF 一致；下面的看板、表单仍用无衬线体 */
-.hdr-serif{font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STZhongsong','STSong','SimSun',Georgia,serif;}
+/* 深色导航行整行用宋体系衬线体（和 JS 里的 SERIF 一致）：名字、切换、流程标签、操作按钮、账号 */
+.nav-serif{font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STZhongsong','STSong','SimSun',Georgia,serif;}
 button:focus,input:focus,select:focus,textarea:focus{outline:2px solid #5C7A60;outline-offset:1px;}
 ::-webkit-scrollbar{width:6px;height:6px;}
 ::-webkit-scrollbar-track{background:#F2F7F1;}
@@ -405,7 +405,7 @@ function BackupHint({at,hasData,onBackup}){
   const days=at?diffDays(at,todayStr()):null;
   if(days!=null&&days<BACKUP_REMIND_DAYS) return null;
   return <div style={{fontSize:11,color:C.textLight,marginTop:8}}>
-    {days==null?"数据只存在这个浏览器里，还没备份过":`距上次备份已经 ${days} 天`} · <span onClick={onBackup} style={{color:C.sage,cursor:"pointer",textDecoration:"underline"}}>现在备份</span>
+    {days==null?"记录只存在这个浏览器里，还没备份过":`已经 ${days} 天没备份了`} · <span onClick={onBackup} style={{color:C.sage,cursor:"pointer",textDecoration:"underline",whiteSpace:"nowrap"}}>现在备份</span>
   </div>;
 }
 function readBackup(e,page,onData){
@@ -482,6 +482,9 @@ function useClock(ms=300000){
 
 // 顶部左栏：日期 + 题记，像一张小摘录
 // 三栏开头统一成「衬线标题 + 一行副标题」，字号、行高、间距一致，三栏的第二部分就能对齐
+// 三栏标题都用衬线体，和深色导航行一致；正文内容用无衬线体
+// 三栏标题下面的内容区高度 = 每日一画的高度（图片最高 170px + 边框内边距），三栏内容都在这个高度里垂直居中
+const BODY_H=178;
 function ColTitle({title,aside}){
   return(
     <div style={{fontFamily:SERIF,fontSize:20,fontWeight:700,color:C.fir,lineHeight:1.4,marginBottom:12}}>
@@ -496,7 +499,7 @@ function DateTitle(){
 }
 function Epigraph({lines,by,italic}){
   return(
-    <div style={{fontFamily:SERIF,color:C.textLight,lineHeight:1.8}}>
+    <div style={{fontFamily:SERIF,color:C.textLight,lineHeight:2.2}}>
       <div style={{fontSize:15,fontStyle:italic?"italic":"normal"}}>
         {lines.map((line,i)=><div key={i}>{line}</div>)}
       </div>
@@ -624,8 +627,8 @@ function ArtOfDay({terms,target}){
       <img src={art.img} alt={art.title} onClick={()=>setOpen(true)} onError={()=>setBroken(true)}
         style={{display:"block",maxWidth:"100%",maxHeight:170,objectFit:"contain",cursor:"zoom-in",background:C.white,border:`1px solid ${C.border}`,padding:3,boxShadow:`0 2px 8px ${C.shadow}`}}/>
       {hover&&!open&&(
-        // 资料卡出现在图片左侧，避免被屏幕右边缘截掉
-        <div style={{position:"absolute",right:"calc(100% + 12px)",top:"50%",transform:"translateY(-50%)",width:280,background:C.white,border:`1px solid ${C.border}`,borderRadius:10,boxShadow:`0 8px 24px ${C.shadow}`,padding:"12px 14px",zIndex:50,textAlign:"left",pointerEvents:"none"}}>
+        // 画在左栏，资料卡出现在图片右侧（浮在中栏上方），避免被屏幕左边缘截掉
+        <div style={{position:"absolute",left:"calc(100% + 12px)",top:"50%",transform:"translateY(-50%)",width:280,background:C.white,border:`1px solid ${C.border}`,borderRadius:10,boxShadow:`0 8px 24px ${C.shadow}`,padding:"12px 14px",zIndex:50,textAlign:"left",pointerEvents:"none"}}>
           <div style={{fontFamily:SERIF,fontSize:14,fontStyle:"italic",color:C.fir,lineHeight:1.4}}>{art.title}</div>
           <div style={{fontSize:12,color:C.textLight,marginTop:3}}>{[art.artist||"Unknown",art.date].filter(Boolean).join(" · ")}</div>
           <div style={{fontSize:12,color:C.text,marginTop:8,lineHeight:1.6,display:"-webkit-box",WebkitLineClamp:7,WebkitBoxOrient:"vertical",overflow:"hidden"}}>
@@ -645,7 +648,7 @@ const ART_TERMS=["road","river","journey","autumn","path","boat","morning","brid
 // 顶部中栏：竖排的统计数字
 function StatList({stats}){
   return(
-    <div style={{display:"flex",flexDirection:"column",fontFamily:SERIF,fontSize:15,lineHeight:1.8}}>
+    <div style={{display:"flex",flexDirection:"column",fontSize:15,lineHeight:1.8}}>
       {stats.map(([label,value])=>(
         <div key={label} style={{display:"flex",alignItems:"baseline",gap:10}}>
           <span style={{fontWeight:700,color:C.fir,minWidth:28,textAlign:"right"}}>{value}</span>
@@ -659,8 +662,8 @@ function StatList({stats}){
 // 秋招 / 申博切换：放在顶部栏最左边，表示「换一个工作区」，和本页的标签页分开
 function PageSwitch({current}){
   const item=(key,href,label)=>key===current
-    ?<span style={{padding:"7px 14px",borderRadius:20,background:C.white,color:C.fir,fontSize:14,fontWeight:700,whiteSpace:"nowrap"}}>{label}</span>
-    :<a href={href} style={{padding:"7px 14px",borderRadius:20,color:C.mist,fontSize:14,fontWeight:600,textDecoration:"none",whiteSpace:"nowrap"}}
+    ?<span style={{fontFamily:SERIF,padding:"7px 14px",borderRadius:20,background:C.white,color:C.fir,fontSize:14,fontWeight:700,whiteSpace:"nowrap"}}>{label}</span>
+    :<a href={href} style={{fontFamily:SERIF,padding:"7px 14px",borderRadius:20,color:C.mist,fontSize:14,fontWeight:600,textDecoration:"none",whiteSpace:"nowrap"}}
         onMouseOver={e=>e.currentTarget.style.color=C.frost} onMouseOut={e=>e.currentTarget.style.color=C.mist}>{label}</a>;
   return(
     <div style={{display:"flex",gap:2,background:"rgba(0,0,0,0.22)",borderRadius:24,padding:3}}>
@@ -1994,7 +1997,7 @@ function App(){
 
   return(
     <div style={{minHeight:"100vh",background:C.cream}}>
-      <div className="hdr-serif" style={{background:C.fir}}>
+      <div className="nav-serif" style={{background:C.fir}}>
         <div className="top-grid">
           <div className="top-cell" style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
             <Brand/>
@@ -2035,41 +2038,53 @@ function App(){
         </div>
       </div>
       {/* 浅色信息行：主题色的极淡斜细纹 */}
-      <div className="hdr-serif" style={{background:`repeating-linear-gradient(135deg, ${C.fir}0D 0 1px, transparent 1px 9px), ${C.white}`,borderBottom:`1px solid ${C.border}`}}>
+      <div style={{background:`repeating-linear-gradient(135deg, ${C.fir}0D 0 1px, transparent 1px 9px), ${C.white}`,borderBottom:`1px solid ${C.border}`}}>
         <div className="top-grid">
           <div className="top-cell">
             <DateTitle/>
-            <Epigraph lines={["我们准备着深深地领受","那些意想不到的奇迹"]} by="冯至《十四行集》"/>
-            <div style={{display:"flex",gap:8,marginTop:14,flexWrap:"wrap"}}>
-              <button onClick={toggleInbox} style={{background:C.white,color:C.textLight,border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>
-                📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""}
-              </button>
-              <button onClick={()=>setReminderOpen(true)} title="提醒：同步状态、每日邮件、日历订阅"
-              style={{background:remindWarn||remindHot?"#C0392B":C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 14px",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-              🔔 提醒{remindHot>0?` (${remindHot})`:""}{remindWarn?" ⚠️":""}
-            </button>
-              <button onClick={exportData} title="把本页全部数据（投递、待投、关注公司、活动）存成一个文件" style={{background:C.white,color:C.textLight,border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>⬇ 备份</button>
-              <label title="从备份文件恢复，已有记录不会被覆盖" style={{background:C.white,color:C.textLight,border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>
-                ⬆ 导入<input type="file" accept=".json" onChange={importData} style={{display:"none"}}/>
-              </label>
+            {/* 左栏是文艺栏：题记旁边放每日一画 */}
+            <div style={{display:"flex",gap:16,alignItems:"center",minHeight:BODY_H}}>
+              <div style={{flex:1,minWidth:0}}>
+              <Epigraph lines={["我们准备着深深地领受","那些意想不到的奇迹"]} by="冯至《十四行集》"/>
+              </div>
+              <div className="art-day" style={{flexShrink:0}}><ArtOfDay terms={ART_TERMS} target="job"/></div>
             </div>
-            <BackupHint at={backupAt} hasData={jobs.length+toApply.length+companies.length+acts.length>0} onBackup={exportData}/>
           </div>
           <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`}}>
             <DayCount label="秋招" since={firstDate([...jobs.map(j=>j.date),...jobs.map(j=>j.id),...toApply.map(t=>t.id),...companies.map(c=>c.id)])} onAccount={()=>setAccountOpen(true)}/>
-            <StatList stats={[["已投递",total],["面试中",interviews],["已录用",offers]]}/>
+            <div style={{display:"flex",alignItems:"center",gap:24,minHeight:BODY_H}}>
+              <StatList stats={[["已投递",total],["面试中",interviews],["已录用",offers]]}/>
+              {/* 收件箱、提醒一行，备份、导入一行 */}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <button onClick={toggleInbox} style={{background:C.white,color:C.textLight,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 11px",fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    📥 收件箱{inboxItems.length>0?` (${inboxItems.length})`:""}
+                  </button>
+                  <button onClick={()=>setReminderOpen(true)} title="提醒：同步状态、每日邮件、日历订阅"
+                  style={{background:remindWarn||remindHot?"#C0392B":C.sage,color:C.white,border:"none",borderRadius:10,padding:"8px 11px",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                  🔔 提醒{remindHot>0?` (${remindHot})`:""}{remindWarn?" ⚠️":""}
+                </button>
+                  <button onClick={exportData} title="把本页全部数据（投递、待投、关注公司、活动）存成一个文件" style={{background:C.white,color:C.textLight,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 11px",fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>⬇ 备份</button>
+                  <label title="从备份文件恢复，已有记录不会被覆盖" style={{textAlign:"center",background:C.white,color:C.textLight,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 11px",fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    ⬆ 导入<input type="file" accept=".json" onChange={importData} style={{display:"none"}}/>
+                  </label>
+                    </div>
+                <BackupHint at={backupAt} hasData={jobs.length+toApply.length+companies.length+acts.length>0} onBackup={exportData}/>
+              </div>
+            </div>
           </div>
           <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`,display:"flex",gap:20,alignItems:"flex-start"}}>
           <div style={{width:AGENDA_W,flexShrink:0}}>
             <DayHeader events={reminderEvents}/>
-            <AgendaPanel events={reminderEvents} target="job" onOpen={openFromAgenda}/>
-            {/* 活动入口放在日程下面 */}
-            <button onClick={()=>setMainTab("events")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"8px 12px",borderRadius:10,border:`1px solid ${mainTab==="events"?C.sage:C.border}`,background:mainTab==="events"?C.frost:C.cream,color:C.fir,fontSize:13,fontWeight:700,cursor:"pointer",marginTop:12}}>
-              <span>📅 活动{acts.length?` · ${acts.length}`:""}</span>
-              <span style={{color:C.textLight,fontWeight:400,fontSize:12}}>查看全部 ›</span>
-            </button>
+            <div style={{minHeight:BODY_H,display:"flex",flexDirection:"column",justifyContent:"center"}}>
+              <AgendaPanel events={reminderEvents} target="job" onOpen={openFromAgenda}/>
+              {/* 活动入口放在日程下面 */}
+              <button onClick={()=>setMainTab("events")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"8px 12px",borderRadius:10,border:`1px solid ${mainTab==="events"?C.sage:C.border}`,background:mainTab==="events"?C.frost:C.cream,color:C.fir,fontSize:13,fontWeight:700,cursor:"pointer",marginTop:12}}>
+                <span>📅 活动{acts.length?` · ${acts.length}`:""}</span>
+                <span style={{color:C.textLight,fontWeight:400,fontSize:12}}>查看全部 ›</span>
+              </button>
+              </div>
           </div>
-          <div className="art-day" style={{flex:1,minWidth:0,display:"flex",justifyContent:"center",alignItems:"center",alignSelf:"stretch"}}><ArtOfDay terms={ART_TERMS} target="job"/></div>
           </div>
         </div>
       </div>

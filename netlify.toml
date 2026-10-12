@@ -1,0 +1,11 @@
+# Netlify 只作国内访问的中转：*.vercel.app 在国内被屏蔽，*.netlify.app 一般能打开。
+# 页面由 Netlify 直接提供；/api/* 原样转发到 Vercel 上的接口（服务器之间转发，不受屏蔽影响），
+# 数据仍存在原来的 Vercel KV 里。
+[build]
+  publish = "."
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://job-tracker-iota-blue.vercel.app/api/:splat"
+  status = 200
+  force = true

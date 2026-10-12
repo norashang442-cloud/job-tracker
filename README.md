@@ -47,6 +47,8 @@
 
 三个接口：`api/inbox-add.js`（写入，`capture.html` 调用）、`api/inbox-list.js`（电脑端拉取列表）、`api/inbox-delete.js`（转换或忽略后从收件箱移除）。三个接口都接受一个 `target` 参数（`job` 或 `phd`，默认 `job`），对应 KV 里两个独立的键（`inbox` / `inbox_phd`），秋招和申博的收件箱数据完全不会串。
 
+**国内不开 VPN 怎么用**：`*.vercel.app` 在国内被屏蔽。仓库里的 `netlify.toml` 让同一个仓库也能部署到 Netlify：页面由 Netlify 提供，`/api/*` 原样转发给 Vercel 上的接口，数据还是同一个收件箱。手机上打开 Netlify 的网址（如 `https://xxx.netlify.app/capture.html`）即可速记。注意 `localStorage` 按网址区分：收件箱密钥要在新网址上重新填一次；电脑上的追踪页面请继续用原来的 Vercel 网址，否则看不到原来的数据。
+
 **使用提示**：小红书这类 App 的"分享"按钮很多是自己定制的面板，不接入 iOS 系统分享，所以没法通过快捷指令（Shortcuts）自动投递到收件箱，只能靠 `capture.html` 手动复制粘贴。想让 AI 提取效果更好，尽量连**帖子文字**一起复制粘贴进去（而不是只存链接）——服务器抓取小红书链接本身大概率因为反爬/前端动态加载拿不到真实内容。图文帖（比如秋招汇总表格截图）建议只存帖子链接，回电脑自己点进去筛选，不做图片文字提取。
 
 ## `phd.html` · 博士申请追踪

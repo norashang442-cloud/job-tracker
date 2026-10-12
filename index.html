@@ -388,7 +388,7 @@ function AgendaPanel({events,target,onOpen}){
         </div>
       )}
       <div onClick={toggleWeek} style={{marginTop:12,fontSize:13,fontWeight:700,color:C.fir,cursor:"pointer"}}>
-        🗓 未来 7 天 ·{later.filter(e=>e.mine).length} {weekOpen?"▲":"▼"}
+        🗓 未来 7 天 · {counts(later)} {weekOpen?"▲":"▼"}
       </div>
       {weekOpen&&<div style={{marginTop:4}}>{later.length?render(later,false,0).rows:<div style={{fontSize:12,color:C.mist}}>未来一周没有安排</div>}</div>}
     </div>

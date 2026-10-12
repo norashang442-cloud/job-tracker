@@ -200,7 +200,7 @@ function DayCount({label,since}){
 function DayHeader({events}){
   useClock();
   const h=new Date().getHours();
-  const greet=h>=6&&h<13?"上午好，今天的安排":h>=13&&h<18?"下午好，今天还剩这些":h>=18&&h<22?"晚上好，看看明天":"夜深了，早点休息";
+  const greet=h>=6&&h<13?"上午好，新的一天":h>=13&&h<18?"下午好，记得歇一会儿":h>=18&&h<22?"晚上好，今天辛苦了":"夜深了，早点睡吧";
   const today=todayStr();
   const todayItems=events.filter(e=>e.date===today||(e.repeatUntilDone&&e.date<today));
   const n=k=>todayItems.filter(e=>e.kind===k).length;

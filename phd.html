@@ -114,6 +114,41 @@ const isDue=(e,today)=>e.remindOn.includes(today)||(e.repeatUntilDone&&today>=e.
 const dueLabel=(date,today)=>{const d=diffDays(today,date);return d===0?"今天":d===1?"明天":d>1?`还有 ${d} 天`:`已逾期 ${-d} 天`;};
 const getKey=()=>{try{return localStorage.getItem("jt4_inbox_key")||""}catch{return ""}};
 
+// ---------- 备份：导出 / 导入本页全部数据，与 index.html / phd.html 保持一致 ----------
+const BACKUP_NAME={job:"秋招",phd:"申博"};
+function downloadBackup(page,data){
+  const payload={app:"在路上",page,exportedAt:new Date().toISOString(),...data};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=`在路上-${BACKUP_NAME[page]}备份-${todayStr()}.json`;
+  a.click();URL.revokeObjectURL(a.href);
+}
+function readBackup(e,page,onData){
+  const file=e.target.files[0];e.target.value="";if(!file)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    let raw;try{raw=JSON.parse(ev.target.result)}catch{alert("⚠️ 文件格式有误");return;}
+    if(raw&&raw.page&&raw.page!==page){const n=BACKUP_NAME[raw.page]||"另一个";alert(`这是${n}页的备份，请到${n}页导入`);return;}
+    onData(raw);
+  };
+  r.readAsText(file);
+}
+// parts: [字段名, 显示名, 当前列表, setter, migrate, 取 id（默认 x.id）]
+function mergeBackup(raw,parts){
+  const plan=parts.map(([k,label,cur,set,mig,idOf=x=>x.id])=>{
+    const incoming=(Array.isArray(raw?.[k])?raw[k]:[]).map(mig);
+    const ids=new Set(cur.map(idOf));
+    return {label,set,incoming,fresh:incoming.filter(x=>!ids.has(idOf(x)))};
+  });
+  if(!plan.some(p=>p.incoming.length)){alert("⚠️ 文件里没有可导入的数据");return;}
+  const summary=plan.filter(p=>p.fresh.length).map(p=>`${p.label} ${p.fresh.length} 条`).join("、");
+  if(!summary){alert("文件里的记录都已存在，不需要导入");return;}
+  if(!confirm(`将新增：${summary}。\n已有的记录保持不变，确认导入？`))return;
+  plan.forEach(p=>p.fresh.length&&p.set(prev=>[...prev,...p.fresh]));
+  alert(`✅ 导入成功：${summary}`);
+}
+
 // Push this page's reminders to the cloud (debounced) so the daily email / calendar feed can see them.
 function useReminderSync(target,events){
   const [sync,setSync]=useState({state:"idle"});
@@ -1339,6 +1374,15 @@ function App(){
   const [reminderOpen,setReminderOpen]=useState(false);
   const [acts,setActs]=useState(()=>{try{return JSON.parse(localStorage.getItem("phd_events")||"[]").map(migrateEvent)}catch{return []}});
   useEffect(()=>{try{localStorage.setItem("phd_events",JSON.stringify(acts))}catch{}},[acts]);
+
+  // 完整备份：套磁、网申、研究方向标签池、活动一起导出；导入按 id 合并（已有记录不覆盖）
+  const exportData=()=>downloadBackup("phd",{professors,applications,researchTags:researchTagPool,events:acts});
+  const importData=e=>readBackup(e,"phd",raw=>mergeBackup(raw,[
+    ["professors","套磁记录",professors,setProfessors,migrateProfessor],
+    ["applications","网申项目",applications,setApplications,migrateApplication],
+    ["events","活动",acts,setActs,migrateEvent],
+    ["researchTags","研究方向标签",researchTagPool,fn=>setResearchTagPool(p=>fn(p).sort((a,b)=>a.localeCompare(b,"zh"))),x=>x,x=>x],
+  ]));
   const [actModal,setActModal]=useState(null);
   const saveAct=item=>{
     if(actModal==="add"||!actModal.id) setActs(a=>[...a,{...item,id:Date.now()}]);
@@ -1551,6 +1595,10 @@ function App(){
               style={{background:remindWarn||remindHot?"#C0392B":C.sage,color:C.white,border:"none",borderRadius:10,padding:"9px 14px",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
               🔔 提醒{remindHot>0?` (${remindHot})`:""}{remindWarn?" ⚠️":""}
             </button>
+              <button onClick={exportData} title="把本页全部数据（套磁、网申、研究方向标签、活动）存成一个文件" style={{background:C.white,color:C.textLight,border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>⬇ 备份</button>
+              <label title="从备份文件恢复，已有记录不会被覆盖" style={{background:C.white,color:C.textLight,border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>
+                ⬆ 导入<input type="file" accept=".json" onChange={importData} style={{display:"none"}}/>
+              </label>
             </div>
           </div>
           <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",justifyContent:"center"}}>

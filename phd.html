@@ -1379,11 +1379,11 @@ function App(){
             <div className="tabscroll">
               <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4,flexShrink:0}}>
                 <button className="mtab" style={mainTabBtn(mainTab==="professors")} onClick={()=>setMainTab("professors")}>
-                  🧑‍🏫 套磁记录
+                  套磁记录
                   {professors.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{professors.length}</span>}
                 </button>
                 <button className="mtab" style={mainTabBtn(mainTab==="applications")} onClick={()=>setMainTab("applications")}>
-                  🎓 网申项目
+                  网申项目
                   {applications.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{applications.length}</span>}
                 </button>
               </div>

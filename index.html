@@ -1612,17 +1612,17 @@ function App(){
             <div className="tabscroll">
               <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.18)",borderRadius:24,padding:4,flexShrink:0}}>
                 <button className="mtab" style={mainTabBtn(mainTab==="companies")} onClick={()=>setMainTab("companies")}>
-                  🏢 公司关注
+                  公司关注
                   {companies.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{companies.length}</span>}
                 </button>
                 <span style={{color:C.mist,fontSize:14,alignSelf:"center",padding:"0 2px"}}>›</span>
                 <button className="mtab" style={mainTabBtn(mainTab==="toApply")} onClick={()=>setMainTab("toApply")}>
-                  📌 待投岗位
+                  待投岗位
                   {toApply.length>0&&<span style={{background:C.reed,color:C.white,borderRadius:12,padding:"1px 7px",fontSize:11,marginLeft:6,fontWeight:700}}>{toApply.length}</span>}
                 </button>
                 <span style={{color:C.mist,fontSize:14,alignSelf:"center",padding:"0 2px"}}>›</span>
                 <button className="mtab" style={mainTabBtn(mainTab==="tracker")} onClick={()=>setMainTab("tracker")}>
-                  📋 投递追踪
+                  投递追踪
                   
                 </button>
               </div>

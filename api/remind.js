@@ -94,7 +94,8 @@ function explainResend(status, data) {
 }
 
 // Build and (unless nothing is due) send one user's digest. Returns { sent, due } or { error }.
-async function runFor(user, { today, test, siteUrl }) {
+async function runFor(user, { today, test, siteUrl: fallbackSite }) {
+  const siteUrl = (await getSettings(user)).siteUrl || fallbackSite;
   const due = (await loadEvents(user)).filter(e => isDue(e, today));
   if (!due.length && !test) return { sent: false, due: 0 };
   const mail = await mailConfig(user);
@@ -145,9 +146,10 @@ export default async function handler(req, res) {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
     if (dry) {
+      const site = (await getSettings(user)).siteUrl || siteUrl;
       const due = (await loadEvents(user)).filter(e => isDue(e, today));
-      const calendarUrl = `${siteUrl}/api/calendar?subscribe=1&key=${encodeURIComponent(await calendarToken(user))}`;
-      const { subject, html } = buildEmail(due, today, siteUrl, calendarUrl);
+      const calendarUrl = `${site}/api/calendar?subscribe=1&key=${encodeURIComponent(await calendarToken(user))}`;
+      const { subject, html } = buildEmail(due, today, site, calendarUrl);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       return res.status(200).send(`<div style="background:#FFF6D6;padding:10px 14px;font:13px sans-serif;margin-bottom:12px">
         预览（未发送）· 模拟日期 ${esc(today)} · 主题：${esc(subject)}${due.length ? "" : " · 今天没有到期事项，定时任务不会发信"}</div>${html}`);

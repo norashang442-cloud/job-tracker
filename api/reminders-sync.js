@@ -1,4 +1,4 @@
-import { kv, cors, keyFor, resolveUser } from "./_lib.js";
+import { kv, cors, keyFor, resolveUser, getSettings } from "./_lib.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const str = (v, max) => String(v ?? "").slice(0, max);
@@ -35,6 +35,13 @@ export default async function handler(req, res) {
 
   try {
     await kv(["SET", kvKey, JSON.stringify({ syncedAt: new Date().toISOString(), events: clean })]);
+    // Remember which address this user opens the site from (Vercel, or Netlify for access from China),
+    // so links in their emails point somewhere they can actually reach.
+    const origin = req.headers.origin || "";
+    if (/^https:\/\/[^/]+$/.test(origin)) {
+      const s = await getSettings(user);
+      if (s.siteUrl !== origin) await kv(["SET", keyFor(user, "settings"), JSON.stringify({ ...s, siteUrl: origin })]);
+    }
     res.status(200).json({ ok: true, count: clean.length });
   } catch (err) {
     res.status(500).json({ error: "Failed to save", detail: err.message });

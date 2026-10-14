@@ -1048,12 +1048,10 @@ function ActivitiesTab({acts,context,applications,onEdit,onDel,onStatus}){
   );
 }
 
-const FOLLOWUP_FIRST_DAYS=5;  // 发出套磁信后几天提醒第一次跟进
-const FOLLOWUP_AGAIN_DAYS=2;  // 跟进后仍没回复，几天后再提醒
+const FOLLOWUP_FIRST_DAYS=7;  // 发出套磁信后几天提醒跟进（只提醒这一次，标记已跟进后不再提醒）
 
 function followupDue(p){
-  if(p.status==="sent"&&p.sentDate) return {date:addDays(p.sentDate,FOLLOWUP_FIRST_DAYS),label:"第一次跟进",base:`${p.sentDate} 发出`};
-  if(p.status==="followed"&&p.followedDate) return {date:addDays(p.followedDate,FOLLOWUP_AGAIN_DAYS),label:"再次跟进",base:`${p.followedDate} 跟进过`};
+  if(p.status==="sent"&&p.sentDate) return {date:addDays(p.sentDate,FOLLOWUP_FIRST_DAYS),label:"跟进",base:`${p.sentDate} 发出`};
   return null;
 }
 
@@ -1304,7 +1302,7 @@ function ProfessorForm({initial,applications,tagPool,onAddToPool,onSave,onCancel
         )}
         {fu&&(
           <div style={{gridColumn:"1/-1",fontSize:12,color:C.sage,background:C.cream,borderRadius:8,padding:"6px 10px"}}>
-            ⏰ 将在 {fu.date} 提醒你{fu.label}（{form.status==="sent"?`发出后 ${FOLLOWUP_FIRST_DAYS}`:`跟进后 ${FOLLOWUP_AGAIN_DAYS}`} 天；没改状态的话之后每天都会提醒）
+            ⏰ 将在 {fu.date} 提醒你{fu.label}（发出后 {FOLLOWUP_FIRST_DAYS} 天；没改状态的话之后每天都会提醒）
           </div>
         )}
         <div style={{gridColumn:"1/-1"}}><label style={lbl}>个人主页/Lab链接</label>

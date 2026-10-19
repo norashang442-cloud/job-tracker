@@ -474,6 +474,8 @@ const TABS_W=320;
 // 右栏「每日一画」：不设固定画单。每天按日期轮换一个主题词，在克利夫兰艺术博物馆（Cleveland Museum of Art）
 // 公有领域馆藏里按标题搜油画，再按日期挑出一幅；同一主题词下次轮到时会挑另一幅。一天只请求一次，结果缓存在本地；
 // 当天取不到时继续显示上一次的画。主界面只显示图片：悬停看资料卡，点击放大。
+// 横幅画限宽，否则会把左栏的题记挤成多行
+const ART_MAX_W=150;
 const ART_SKIP=/tuti-nama|ramayana|shah-nama|akbar-nama|folio|calligraph/i;
 const artistName=desc=>(desc||"").replace(/\s*\(.*$/,"").trim();
 const stripHtml=s=>(s||"").replace(/<[^>]+>/g,"").replace(/&nbsp;/g," ").replace(/\s+/g," ").trim();
@@ -542,7 +544,7 @@ function ArtOfDay({terms,target}){
   return(
     <div style={{position:"relative",display:"inline-block",maxWidth:"100%"}} onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}>
       <img src={art.img} alt={art.title} onClick={()=>setOpen(true)} onError={()=>setBroken(true)}
-        style={{display:"block",maxWidth:"100%",maxHeight:170,objectFit:"contain",cursor:"zoom-in",background:C.white,border:`1px solid ${C.border}`,padding:3,boxShadow:`0 2px 8px ${C.shadow}`}}/>
+        style={{display:"block",maxWidth:ART_MAX_W,maxHeight:170,objectFit:"contain",cursor:"zoom-in",background:C.white,border:`1px solid ${C.border}`,padding:3,boxShadow:`0 2px 8px ${C.shadow}`}}/>
       {hover&&!open&&(
         // 画在左栏，资料卡出现在图片右侧（浮在中栏上方），避免被屏幕左边缘截掉
         <div style={{position:"absolute",left:"calc(100% + 12px)",top:"50%",transform:"translateY(-50%)",width:280,background:C.white,border:`1px solid ${C.border}`,borderRadius:10,boxShadow:`0 8px 24px ${C.shadow}`,padding:"12px 14px",zIndex:50,textAlign:"left",pointerEvents:"none"}}>

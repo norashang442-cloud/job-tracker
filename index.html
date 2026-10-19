@@ -558,6 +558,8 @@ const TABS_W=320;
 // 右栏「每日一画」：不设固定画单。每天按日期轮换一个主题词，在克利夫兰艺术博物馆（Cleveland Museum of Art）
 // 公有领域馆藏里按标题搜油画，再按日期挑出一幅；同一主题词下次轮到时会挑另一幅。一天只请求一次，结果缓存在本地；
 // 当天取不到时继续显示上一次的画。主界面只显示图片：悬停看资料卡，点击放大。
+// 横幅画限宽，否则会把左栏的题记挤成多行
+const ART_MAX_W=150;
 const ART_SKIP=/tuti-nama|ramayana|shah-nama|akbar-nama|folio|calligraph/i;
 const artistName=desc=>(desc||"").replace(/\s*\(.*$/,"").trim();
 const stripHtml=s=>(s||"").replace(/<[^>]+>/g,"").replace(/&nbsp;/g," ").replace(/\s+/g," ").trim();
@@ -626,7 +628,7 @@ function ArtOfDay({terms,target}){
   return(
     <div style={{position:"relative",display:"inline-block",maxWidth:"100%"}} onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}>
       <img src={art.img} alt={art.title} onClick={()=>setOpen(true)} onError={()=>setBroken(true)}
-        style={{display:"block",maxWidth:"100%",maxHeight:170,objectFit:"contain",cursor:"zoom-in",background:C.white,border:`1px solid ${C.border}`,padding:3,boxShadow:`0 2px 8px ${C.shadow}`}}/>
+        style={{display:"block",maxWidth:ART_MAX_W,maxHeight:170,objectFit:"contain",cursor:"zoom-in",background:C.white,border:`1px solid ${C.border}`,padding:3,boxShadow:`0 2px 8px ${C.shadow}`}}/>
       {hover&&!open&&(
         // 画在左栏，资料卡出现在图片右侧（浮在中栏上方），避免被屏幕左边缘截掉
         <div style={{position:"absolute",left:"calc(100% + 12px)",top:"50%",transform:"translateY(-50%)",width:280,background:C.white,border:`1px solid ${C.border}`,borderRadius:10,boxShadow:`0 8px 24px ${C.shadow}`,padding:"12px 14px",zIndex:50,textAlign:"left",pointerEvents:"none"}}>
@@ -1138,7 +1140,7 @@ function buildJobEvents(jobs,toApply,today){
   jobs.forEach(j=>{
     if(j.status==="rejected") return;
     (j.milestones||[]).forEach(m=>{
-      if(!m.date||m.date<cutoff) return;
+      if(!m.date||m.date<cutoff||m.done) return;
       ev.push({id:`job-${j.id}-${m.id}`,kind:"milestone",title:[j.company,j.position,m.stage].filter(Boolean).join(" · "),detail:m.note||"",date:m.date,time:m.time||"",url:j.url||"",remindOn:[addDays(m.date,-1),m.date]});
     });
   });
@@ -1245,6 +1247,7 @@ function MilestoneEditor({milestones,onChange,company,position}){
     }
   };
   const remove=id=>{ onChange(milestones.filter(m=>m.id!==id)); if(editingId===id) resetForm(); };
+  const toggleDone=id=>onChange(milestones.map(m=>m.id===id?{...m,done:!m.done}:m));
   const addToCalendar=m=>downloadICS(`${company}-${position}-${m.stage}.ics`,buildMilestoneICS({company,position,stage:m.stage,date:m.date,time:m.time,note:m.note}));
   const stageColor={"Online Test":"#5C7A60","Assessment Centre":"#2F5A7A","Individual Interview":"#6A4F8A","Group Interview":"#7A6E2F","Power Day":"#7A3030","Video Interview":"#2F6B6B","Phone Screen":"#4A6350","HR Round":"#5A4A2F","Technical Interview":"#2F4A7A","Offer Call":"#2F6640","其他":"#888"};
   return(
@@ -1255,10 +1258,11 @@ function MilestoneEditor({milestones,onChange,company,position}){
           {milestones.map(m=>(
             <div key={m.id} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8,position:"relative"}}>
               <div style={{width:10,height:10,borderRadius:"50%",background:stageColor[m.stage]||C.sage,flexShrink:0,marginTop:3,zIndex:1}}/>
-              <div style={{flex:1,background:editingId===m.id?C.frost:C.cream,borderRadius:8,padding:"6px 10px",border:`1px solid ${editingId===m.id?C.sage:C.border}`}}>
+              <div style={{flex:1,background:editingId===m.id?C.frost:C.cream,borderRadius:8,padding:"6px 10px",border:`1px solid ${editingId===m.id?C.sage:C.border}`,opacity:m.done?0.55:1}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{fontSize:12,fontWeight:700,color:stageColor[m.stage]||C.sage}}>{m.stage}</span>
+                  <span style={{fontSize:12,fontWeight:700,color:stageColor[m.stage]||C.sage,textDecoration:m.done?"line-through":"none"}}>{m.stage}</span>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <button onClick={()=>toggleDone(m.id)} title={m.done?"取消完成（恢复提醒）":"标记已完成（不再提醒、从日历移除）"} style={{background:"none",border:"none",color:m.done?C.moss:C.mist,cursor:"pointer",fontSize:13,lineHeight:1}}>{m.done?"☑":"☐"}</button>
                     <span style={{fontSize:11,color:C.mist}}>{m.date}{m.time?` ${m.time}`:""}</span>
                     <button onClick={()=>startEdit(m)} title="编辑" style={{background:"none",border:"none",color:C.sage,cursor:"pointer",fontSize:12,lineHeight:1}}>✎</button>
                     <button onClick={()=>addToCalendar(m)} title="添加到日历" style={{background:"none",border:"none",color:C.sage,cursor:"pointer",fontSize:13,lineHeight:1}}>📅</button>

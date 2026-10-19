@@ -1858,6 +1858,21 @@ function App(){
   const companiesTracked=companiesWithPositions.filter(x=>x.positions.length>0);
 
   const filtered=jobs.filter(j=>filter==="all"||j.status===filter).filter(j=>typeFilter==="all"||j.type===typeFilter);
+  // 列表按列排序：点列标题 升序 → 降序 → 恢复默认；空值始终排在最后
+  const [sort,setSort]=useState({key:null,dir:1});
+  const clickSort=k=>setSort(s=>s.key!==k?{key:k,dir:1}:s.dir===1?{key:k,dir:-1}:{key:null,dir:1});
+  const lastMs=j=>{const m=j.milestones||[];return m.length?m[m.length-1]:null;};
+  const SORT_VAL={
+    company:j=>j.company, position:j=>j.position, type:j=>j.type||"全职",
+    status:j=>{const i=STATUS.findIndex(s=>s.key===j.status);return i<0?null:i;},
+    date:j=>j.date, latest:j=>lastMs(j)?.date, source:j=>j.source, note:j=>j.note,
+  };
+  const sortedList=!sort.key?filtered:[...filtered].sort((a,b)=>{
+    const x=SORT_VAL[sort.key](a),y=SORT_VAL[sort.key](b);
+    const ex=x==null||x==="",ey=y==null||y==="";
+    if(ex||ey) return ex===ey?0:ex?1:-1;
+    return (typeof x==="number"?x-y:String(x).localeCompare(String(y),"zh"))*sort.dir;
+  });
   const total=jobs.length,interviews=jobs.filter(j=>j.status==="interview").length;
   const offers=jobs.filter(j=>j.status==="offer").length;
 
@@ -2287,14 +2302,17 @@ function App(){
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:700}}>
               <thead>
                 <tr style={{background:C.fir,color:C.frost}}>
-                  {["公司","职位","类型","状态","投递日期","最新环节","来源","备注","操作"].map(h=>(
-                    <th key={h} style={{padding:"11px 12px",textAlign:"left",fontWeight:600,fontSize:12,whiteSpace:"nowrap"}}>{h}</th>
+                  {[["公司","company"],["职位","position"],["类型","type"],["状态","status"],["投递日期","date"],["最新环节","latest"],["来源","source"],["备注","note"],["操作",null]].map(([h,k])=>(
+                    <th key={h} onClick={k?()=>clickSort(k):undefined} title={k?"点击排序":undefined}
+                      style={{padding:"11px 12px",textAlign:"left",fontWeight:600,fontSize:12,whiteSpace:"nowrap",cursor:k?"pointer":"default",userSelect:"none"}}>
+                      {h}{k&&<span style={{marginLeft:4,opacity:sort.key===k?1:0.35,fontSize:10}}>{sort.key===k?(sort.dir===1?"▲":"▼"):"⇅"}</span>}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:32,color:C.mist}}>暂无投递记录</td></tr>}
-                {filtered.map((job,i)=>{
+                {sortedList.map((job,i)=>{
                   const ms=job.milestones||[];
                   const latest=ms.length>0?ms[ms.length-1]:null;
                   return(

@@ -680,8 +680,6 @@ function PageSwitch({current}){
   );
 }
 
-// 顶部右栏的日程：本页事项正常显示、点击打开对应记录（今天 / 明天最多先显示 4 条）；
-// 另一边的事项读它最近一次保存的本地缓存，按天合并成一行淡淡显示「这段时间被占了」，不可点。「未来 7 天」默认折叠。
 // 顶部右栏的小月历：看一个月里事项的松紧。数据和日程一致（本页提醒 + 另一边的本地缓存），
 // 每天最多 3 个圆点：本页按类型上色，另一边一律浅色；过去的日子变淡。点有事项的日子弹出当天清单，本页条目可点开。
 const CAL_CELL=22;
@@ -762,17 +760,23 @@ function MiniCalendar({events,target,onOpen}){
   );
 }
 
-const NEAR_LIMIT=4;
+// 顶部右栏的日程：两行标题，点击弹出清单；本页事项正常显示、点击打开对应记录；
+// 另一边的事项读它最近一次保存的本地缓存，按天合并成一行淡淡显示「这段时间被占了」，不可点。
 function AgendaPanel({events,target,onOpen}){
   useClock();
   const other=target==="job"?"phd":"job";
   const otherLabel=other==="job"?"秋招":"申博";
-  const [weekOpen,setWeekOpen]=useState(()=>{try{return localStorage.getItem("agenda_week_open")==="1"}catch{return false}});
-  const toggleWeek=()=>setWeekOpen(v=>{try{localStorage.setItem("agenda_week_open",v?"0":"1")}catch{} return !v;});
-  // 申博页的「今天 / 明天」默认折叠，展开状态和秋招页分开记
-  const [nearOpen,setNearOpen]=useState(()=>{try{return localStorage.getItem("agenda_near_open_phd")==="1"}catch{return false}});
-  const toggleNear=()=>setNearOpen(v=>{try{localStorage.setItem("agenda_near_open_phd",v?"0":"1")}catch{} return !v;});
-  const [nearAll,setNearAll]=useState(false);
+  // 「今天 / 明天」「未来 7 天」只占两行标题，点击弹出清单，不在原地展开
+  const [pop,setPop]=useState(null);
+  const boxRef=useRef(null);
+  useEffect(()=>{
+    if(!pop) return;
+    const close=ev=>{if(boxRef.current&&!boxRef.current.contains(ev.target)) setPop(null);};
+    const esc=ev=>{if(ev.key==="Escape") setPop(null);};
+    document.addEventListener("mousedown",close);
+    document.addEventListener("keydown",esc);
+    return()=>{document.removeEventListener("mousedown",close);document.removeEventListener("keydown",esc);};
+  },[pop]);
   const [openGroups,setOpenGroups]=useState({});
   const toggleGroup=k=>setOpenGroups(g=>({...g,[k]:!g[k]}));
   const today=todayStr(),tomorrow=addDays(today,1),week=addDays(today,7);
@@ -795,70 +799,67 @@ function AgendaPanel({events,target,onOpen}){
     });
     return out;
   };
-  const render=(list,nearCol,limit)=>{
-    let shown=0,hidden=0;
-    const rows=lines(list).map(l=>{
-      if(!l.e){
-        const one=l.items.length===1?l.items[0]:null;
-        const key=(nearCol?"n-":"w-")+l.date;
-        const open=!!openGroups[key];
-        const label=it=>`${it.short||it.title}${it.time?` ${it.time}`:""}`;
-        return(
-          <div key={"o-"+key} style={{fontSize:11,color:C.mist,padding:"2px 0"}}>
-            <div onClick={one?undefined:()=>toggleGroup(key)} style={{display:"flex",gap:8,cursor:one?"default":"pointer"}}>
-              <span style={{width:62,flexShrink:0}}>{whenOf(l.date,nearCol)}</span>
-              <span style={{wordBreak:"break-word"}}>
-                <span style={{border:`1px solid ${C.border}`,borderRadius:4,padding:"0 4px",marginRight:5}}>{otherLabel}</span>
-                {one?label(one):`${l.items.length} 项 ${open?"▲":"▼"}`}
-              </span>
-            </div>
-            {!one&&open&&(
-              <div style={{paddingLeft:70,marginTop:2}}>
-                {l.items.map(it=><div key={it.id} style={{padding:"1px 0",wordBreak:"break-word"}}>{label(it)}</div>)}
-              </div>
-            )}
-          </div>
-        );
-      }
-      const e=l.e;
-      if(limit&&shown>=limit){hidden++;return null;}
-      shown++;
-      const time=e.time?` ${e.time}${e.endTime?`–${e.endTime}`:""}`:"";
+  const render=(list,nearCol)=>lines(list).map(l=>{
+    if(!l.e){
+      const one=l.items.length===1?l.items[0]:null;
+      const key=(nearCol?"n-":"w-")+l.date;
+      const open=!!openGroups[key];
+      const label=it=>`${it.short||it.title}${it.time?` ${it.time}`:""}`;
       return(
-        <div key={e.id} onClick={()=>onOpen(e)} title={[e.title,e.detail].filter(Boolean).join("\n")||"点击打开"} style={{display:"flex",gap:8,fontSize:13,padding:"4px 6px",margin:"0 -6px",borderRadius:7,cursor:"pointer"}}
-          onMouseOver={ev=>ev.currentTarget.style.background=C.cream} onMouseOut={ev=>ev.currentTarget.style.background="transparent"}>
-          <span style={{width:62,flexShrink:0,fontSize:12,fontWeight:700,color:e.date<=today?"#c0392b":C.textLight}}>{whenOf(e.date,nearCol)}</span>
-          <span style={{color:C.text,wordBreak:"break-word"}}>{KIND_ICON[e.kind]||"•"} {e.short||e.title}<span style={{color:C.sage,fontWeight:600}}>{time}</span></span>
+        <div key={"o-"+key} style={{fontSize:11,color:C.mist,padding:"2px 0"}}>
+          <div onClick={one?undefined:()=>toggleGroup(key)} style={{display:"flex",gap:8,cursor:one?"default":"pointer"}}>
+            <span style={{width:62,flexShrink:0}}>{whenOf(l.date,nearCol)}</span>
+            <span style={{wordBreak:"break-word"}}>
+              <span style={{border:`1px solid ${C.border}`,borderRadius:4,padding:"0 4px",marginRight:5}}>{otherLabel}</span>
+              {one?label(one):`${l.items.length} 项 ${open?"▲":"▼"}`}
+            </span>
+          </div>
+          {!one&&open&&(
+            <div style={{paddingLeft:70,marginTop:2}}>
+              {l.items.map(it=><div key={it.id} style={{padding:"1px 0",wordBreak:"break-word"}}>{label(it)}</div>)}
+            </div>
+          )}
         </div>
       );
-    });
-    return {rows,hidden};
-  };
-  const nearView=render(near,true,nearAll?0:NEAR_LIMIT);
+    }
+    const e=l.e;
+    const time=e.time?` ${e.time}${e.endTime?`–${e.endTime}`:""}`:"";
+    return(
+      <div key={e.id} onClick={()=>{setPop(null);onOpen(e);}} title={[e.title,e.detail].filter(Boolean).join("\n")||"点击打开"} style={{display:"flex",gap:8,fontSize:13,padding:"4px 6px",margin:"0 -6px",borderRadius:7,cursor:"pointer"}}
+        onMouseOver={ev=>ev.currentTarget.style.background=C.cream} onMouseOut={ev=>ev.currentTarget.style.background="transparent"}>
+        <span style={{width:62,flexShrink:0,fontSize:12,fontWeight:700,color:e.date<=today?"#c0392b":C.textLight}}>{whenOf(e.date,nearCol)}</span>
+        <span style={{color:C.text,wordBreak:"break-word"}}>{KIND_ICON[e.kind]||"•"} {e.short||e.title}<span style={{color:C.sage,fontWeight:600}}>{time}</span></span>
+      </div>
+    );
+  });
   // 标题里的数字：本页事项正常显示，另一边的数量用浅色附在后面
   const counts=list=>{
     const mine=list.filter(e=>e.mine).length,theirs=list.length-mine;
     return <>{mine}{theirs>0&&<span style={{fontWeight:400,color:C.mist,fontSize:12}}> · {otherLabel} {theirs}</span>}</>;
   };
-  return(
-    <div>
-      <div onClick={toggleNear} style={{fontSize:13,fontWeight:700,color:C.fir,marginBottom:6,cursor:"pointer"}}>
-        🗓 今天 / 明天 · {counts(near)} {nearOpen?"▲":"▼"}
+  const head=(key,text,list,empty,nearCol,mt)=>(
+    <div style={{position:"relative",marginTop:mt}}>
+      <div onClick={()=>setPop(p=>p===key?null:key)} style={{fontSize:13,fontWeight:700,color:C.fir,cursor:"pointer"}}>
+        🗓 {text} · {counts(list)} <span style={{color:C.mist}}>{pop===key?"‹":"›"}</span>
       </div>
-      {nearOpen&&(near.length?nearView.rows:<div style={{fontSize:12,color:C.mist}}>今明两天没有安排</div>)}
-      {nearOpen&&(nearView.hidden>0||nearAll)&&(
-        <div onClick={()=>setNearAll(v=>!v)} style={{fontSize:12,color:C.sage,cursor:"pointer",marginTop:2}}>
-          {nearAll?"收起 ▲":`还有 ${nearView.hidden} 项 ▼`}
+      {pop===key&&(
+        <div style={{position:"absolute",left:0,top:"calc(100% + 6px)",width:320,maxWidth:"80vw",maxHeight:340,overflowY:"auto",background:C.white,border:`1px solid ${C.border}`,borderRadius:10,boxShadow:`0 8px 24px ${C.shadow}`,padding:"10px 14px",zIndex:60}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <span style={{fontSize:12,fontWeight:700,color:C.fir}}>{text}</span>
+            <button onClick={()=>setPop(null)} style={{background:"none",border:"none",color:C.textLight,cursor:"pointer",fontSize:13,lineHeight:1}}>×</button>
+          </div>
+          {list.length?render(list,nearCol):<div style={{fontSize:12,color:C.mist}}>{empty}</div>}
         </div>
       )}
-      <div onClick={toggleWeek} style={{marginTop:12,fontSize:13,fontWeight:700,color:C.fir,cursor:"pointer"}}>
-        🗓 未来 7 天 · {counts(later)} {weekOpen?"▲":"▼"}
-      </div>
-      {weekOpen&&<div style={{marginTop:4}}>{later.length?render(later,false,0).rows:<div style={{fontSize:12,color:C.mist}}>未来一周没有安排</div>}</div>}
+    </div>
+  );
+  return(
+    <div ref={boxRef}>
+      {head("near","今天 / 明天",near,"今明两天没有安排",true,0)}
+      {head("week","未来 7 天",later,"未来一周没有安排",false,12)}
     </div>
   );
 }
-
 // 收件箱顶部：手机速记的上手指南（扫码 / 网址、登录、添加到主屏幕）。二维码库只在展开时才加载
 function MobileCaptureGuide({defaultOpen}){
   const url=`${location.origin}/capture.html`;

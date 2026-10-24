@@ -1103,12 +1103,14 @@ function ActivityCard({act,context,applications=[],onEdit,onDel,onStatus}){
   );
 }
 
+// 「即将进行」：日期未到，或者已报名但还没标记参加/错过（活动页分组和主界面入口的数量都按这个算）
+const isUpcomingAct=(a,W,today)=>!W.date||W.date>=today||a.status==="registered";
+
 function ActivitiesTab({acts,context,applications,onEdit,onDel,onStatus}){
   const [pastOpen,setPastOpen]=useState(false);
   const today=todayStr();
   const withWhen=acts.map(a=>({a,W:localWhen(a)}));
-  // 「即将进行」：日期未到，或者已报名但还没标记参加/错过
-  const upcoming=withWhen.filter(({a,W})=>!W.date||W.date>=today||a.status==="registered").sort((x,y)=>(x.W.date+x.W.time).localeCompare(y.W.date+y.W.time));
+  const upcoming=withWhen.filter(({a,W})=>isUpcomingAct(a,W,today)).sort((x,y)=>(x.W.date+x.W.time).localeCompare(y.W.date+y.W.time));
   const past=withWhen.filter(x=>!upcoming.includes(x)).sort((x,y)=>(y.W.date+y.W.time).localeCompare(x.W.date+x.W.time));
   const grid=list=>(
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
@@ -1861,6 +1863,7 @@ function App(){
   const [reminderOpen,setReminderOpen]=useState(false);
   const [acts,setActs]=useState(()=>{try{return JSON.parse(localStorage.getItem(lsKey("phd_events"))||"[]").map(migrateEvent)}catch{return []}});
   useEffect(()=>{try{localStorage.setItem(lsKey("phd_events"),JSON.stringify(acts))}catch{}},[acts]);
+  const upcomingActs=acts.filter(a=>isUpcomingAct(a,localWhen(a),todayStr())).length;
 
   // 完整备份：套磁、网申、研究方向标签池、活动一起导出；导入按 id 合并（已有记录不覆盖）
   const [backupAt,setBackupAt]=useState(()=>getBackupAt("phd"));
@@ -2143,7 +2146,7 @@ function App(){
               <AgendaPanel events={reminderEvents} target="phd" onOpen={openFromAgenda}/>
               {/* 活动入口放在日程下面 */}
               <button onClick={()=>setMainTab("events")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"8px 12px",borderRadius:10,border:`1px solid ${mainTab==="events"?C.sage:C.border}`,background:mainTab==="events"?C.frost:C.cream,color:C.fir,fontSize:13,fontWeight:700,cursor:"pointer",marginTop:12}}>
-                <span>📅 活动{acts.length?` · ${acts.length}`:""}</span>
+                <span>📅 活动{upcomingActs?` · ${upcomingActs}`:""}</span>
                 <span style={{color:C.textLight,fontWeight:400,fontSize:12}}>查看全部 ›</span>
               </button>
               </div>

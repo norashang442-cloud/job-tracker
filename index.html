@@ -194,6 +194,25 @@ function downloadICS(filename,content){
   URL.revokeObjectURL(a.href);
 }
 
+// ---------- 列表检索，与 phd.html 保持一致 ----------
+// 空格分开的每个词都要在记录的某个字段里出现（不区分大小写）
+const matchSearch=(q,fields)=>{
+  const words=q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if(!words.length) return true;
+  const hay=fields.filter(Boolean).join("\n").toLowerCase();
+  return words.every(w=>hay.includes(w));
+};
+function SearchBox({value,onChange,placeholder}){
+  return(
+    <div style={{position:"relative",flex:"1 1 200px",maxWidth:320}}>
+      <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+        style={{width:"100%",padding:"6px 28px 6px 30px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.text,fontSize:13}}/>
+      <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:12,color:C.mist,pointerEvents:"none"}}>🔍</span>
+      {value&&<button onClick={()=>onChange("")} title="清空" style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.mist,cursor:"pointer",fontSize:14,lineHeight:1}}>×</button>}
+    </div>
+  );
+}
+
 // ---------- 提醒（每日邮件 + 日历订阅），与 phd.html 保持一致 ----------
 const pad2=n=>String(n).padStart(2,"0");
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;};
@@ -1747,7 +1766,8 @@ function App(){
   });
   const [companies,setCompanies]=useState(()=>{try{return JSON.parse(localStorage.getItem(lsKey("jt4_companies"))||"[]").map(migrateCompany)}catch{return []}});
   const [mainTab,setMainTab]=useState("tracker");
-  const [view,setView]=useState("看板");
+  const [view,setView]=useState("列表");
+  const [search,setSearch]=useState("");
   const [modal,setModal]=useState(null);
   const [taModal,setTaModal]=useState(false);
   const [cModal,setCModal]=useState(false);
@@ -1857,7 +1877,8 @@ function App(){
   const companiesNeedReview=companiesWithPositions.filter(x=>x.positions.length===0);
   const companiesTracked=companiesWithPositions.filter(x=>x.positions.length>0);
 
-  const filtered=jobs.filter(j=>filter==="all"||j.status===filter).filter(j=>typeFilter==="all"||j.type===typeFilter);
+  const matchJob=j=>matchSearch(search,[j.company,j.position,j.type,j.industry,j.source,j.note,...(j.milestones||[]).flatMap(m=>[m.stage,m.note])]);
+  const filtered=jobs.filter(j=>filter==="all"||j.status===filter).filter(j=>typeFilter==="all"||j.type===typeFilter).filter(matchJob);
   // 列表按列排序：点列标题 升序 → 降序 → 恢复默认；空值始终排在最后
   const [sort,setSort]=useState({key:null,dir:1});
   const clickSort=k=>setSort(s=>s.key!==k?{key:k,dir:1}:s.dir===1?{key:k,dir:-1}:{key:null,dir:1});
@@ -2238,7 +2259,7 @@ function App(){
 
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18,flexWrap:"wrap"}}>
           <div style={{display:"flex",gap:3,background:C.frost,borderRadius:24,padding:3}}>
-            {["看板","列表"].map(v=><button key={v} style={tabBtn(view===v)} onClick={()=>setView(v)}>{v}</button>)}
+            {["列表","看板"].map(v=><button key={v} style={tabBtn(view===v)} onClick={()=>setView(v)}>{v}</button>)}
           </div>
           <select style={selStyle} value={filter} onChange={e=>setFilter(e.target.value)}>
             <option value="all">全部状态</option>
@@ -2248,12 +2269,14 @@ function App(){
             <option value="all">全部类型</option>
             {TYPES.map(t=><option key={t}>{t}</option>)}
           </select>
+          <SearchBox value={search} onChange={setSearch} placeholder="检索公司、职位、来源、环节、备注…"/>
+          {(search||filter!=="all"||typeFilter!=="all")&&<span style={{fontSize:12,color:C.textLight}}>{filtered.length} / {jobs.length} 条</span>}
         </div>
 
         {view==="看板"&&(
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {STATUS.map(col=>{
-              const colJobs=jobs.filter(j=>j.status===col.key&&(typeFilter==="all"||j.type===typeFilter));
+              const colJobs=jobs.filter(j=>j.status===col.key&&(typeFilter==="all"||j.type===typeFilter)&&matchJob(j));
               const isOver=dragOver.current===col.key;
               const hasAny=jobs.some(j=>j.status===col.key);
               const isOpen=col.key in manualExpand?manualExpand[col.key]:hasAny;
@@ -2311,7 +2334,7 @@ function App(){
                 </tr>
               </thead>
               <tbody>
-                {filtered.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:32,color:C.mist}}>暂无投递记录</td></tr>}
+                {filtered.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:32,color:C.mist}}>{jobs.length?"暂无符合条件的记录":"暂无投递记录"}</td></tr>}
                 {sortedList.map((job,i)=>{
                   const ms=job.milestones||[];
                   const latest=ms.length>0?ms[ms.length-1]:null;

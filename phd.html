@@ -94,8 +94,13 @@ const APP_STATUS=[
   {key:"waitlist",  label:"Waitlist",  color:"#7A6E2F",bg:"#F5F2DC"},
   {key:"rejected",  label:"未录取",     color:"#7A3030",bg:"#F5DCDC"},
 ];
-const EMPTY_PROF={name:"",institution:"",researchAreas:[],status:"pending",sentDate:"",followedDate:"",url:"",note:"",applicationIds:[],contacts:[]};
-const EMPTY_APP={school:"",program:"",cycle:"",deadline:"",rolling:false,status:"prep",url:"",note:""};
+const EMPTY_PROF={name:"",institution:"",researchAreas:[],status:"pending",sentDate:"",followedDate:"",url:"",note:"",applicationIds:[],contacts:[],milestones:[]};
+const EMPTY_APP={school:"",program:"",cycle:"",deadline:"",rolling:false,status:"prep",url:"",note:"",milestones:[]};
+// 日程环节（类比秋招的笔试 / 面试环节）：带日期、可选时间，进提醒邮件和订阅日历
+const PHD_STAGES=["Informal Meeting","Interview","Admission Deadline","Funding Deadline","Offer Reply Deadline","Visit Day","其他"];
+const PHD_STAGE_COLOR={"Informal Meeting":"#5C7A60","Interview":"#2F5A7A","Admission Deadline":"#7A3030","Funding Deadline":"#7A6E2F","Offer Reply Deadline":"#2F6640","Visit Day":"#6A4F8A","其他":"#888"};
+// 截止类环节按截止日期提醒（提前 7 天、1 天、当天），其余按会面提醒（前一天、当天）
+const isDeadlineStage=s=>/deadline/i.test(s||"");
 
 const inp={width:"100%",padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:14,color:C.text,background:C.cream};
 const lbl={fontSize:12,color:C.textLight,marginBottom:4,display:"block",fontWeight:600};
@@ -118,6 +123,87 @@ const diffDays=(a,b)=>Math.round((Date.parse(b+"T00:00:00Z")-Date.parse(a+"T00:0
 const isDue=(e,today)=>e.remindOn.includes(today)||(e.repeatUntilDone&&today>=e.date);
 const dueLabel=(date,today)=>{const d=diffDays(today,date);return d===0?"今天":d===1?"明天":d>1?`还有 ${d} 天`:`已逾期 ${-d} 天`;};
 const getKey=()=>{try{return localStorage.getItem("jt4_inbox_key")||""}catch{return ""}};
+
+// ---------- 单个日程导出为 .ics，与 index.html 保持一致 ----------
+function icsEscape(s){
+  return String(s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");
+}
+function buildMilestoneICS({company,position,stage,date,time,note}){
+  const pad=n=>String(n).padStart(2,"0");
+  const now=new Date();
+  const dtstamp=`${now.getUTCFullYear()}${pad(now.getUTCMonth()+1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
+  const uid=`${Date.now()}-${Math.random().toString(36).slice(2)}@job-tracker`;
+  const summary=icsEscape([company,position,stage].filter(Boolean).join("-"));
+  const description=icsEscape(note||"");
+  const [y,m,d]=date.split("-");
+  let dtLines,alarmTrigger;
+  if(time){
+    const [hh,mm]=time.split(":");
+    dtLines=[`DTSTART:${y}${m}${d}T${hh}${mm}00`];
+    alarmTrigger="-PT2H";
+  }else{
+    const start=new Date(Number(y),Number(m)-1,Number(d));
+    const end=new Date(start); end.setDate(end.getDate()+1);
+    const endStr=`${end.getFullYear()}${pad(end.getMonth()+1)}${pad(end.getDate())}`;
+    dtLines=[`DTSTART;VALUE=DATE:${y}${m}${d}`,`DTEND;VALUE=DATE:${endStr}`];
+    alarmTrigger="-P1D";
+  }
+  // RFC5545 requires VEVENT properties before any VALARM sub-component,
+  // otherwise strict parsers (Apple Calendar included) silently drop SUMMARY.
+  const lines=[
+    "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//job-tracker//milestone//CN",
+    "BEGIN:VEVENT",`UID:${uid}`,`DTSTAMP:${dtstamp}`,...dtLines,
+    `SUMMARY:${summary}`,
+    description?`DESCRIPTION:${description}`:null,
+    "BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:提醒",`TRIGGER:${alarmTrigger}`,"END:VALARM",
+    "END:VEVENT","END:VCALENDAR",
+  ].filter(Boolean);
+  return lines.join("\r\n");
+}
+function downloadICS(filename,content){
+  const blob=new Blob([content],{type:"text/calendar;charset=utf-8"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ---------- 列表：检索 + 按列排序，与 index.html 保持一致 ----------
+// 检索：空格分开的每个词都要在记录的某个字段里出现（不区分大小写）
+const matchSearch=(q,fields)=>{
+  const words=q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if(!words.length) return true;
+  const hay=fields.filter(Boolean).join("\n").toLowerCase();
+  return words.every(w=>hay.includes(w));
+};
+// 排序：点列标题 升序 → 降序 → 恢复默认；空值始终排在最后
+function useSort(){
+  const [sort,setSort]=useState({key:null,dir:1});
+  const clickSort=k=>setSort(s=>s.key!==k?{key:k,dir:1}:s.dir===1?{key:k,dir:-1}:{key:null,dir:1});
+  const apply=(list,getters)=>!sort.key||!getters[sort.key]?list:[...list].sort((a,b)=>{
+    const x=getters[sort.key](a),y=getters[sort.key](b);
+    const ex=x==null||x==="",ey=y==null||y==="";
+    if(ex||ey) return ex===ey?0:ex?1:-1;
+    return (typeof x==="number"?x-y:String(x).localeCompare(String(y),"zh"))*sort.dir;
+  });
+  return {sort,clickSort,apply};
+}
+function SearchBox({value,onChange,placeholder}){
+  return(
+    <div style={{position:"relative",flex:"1 1 200px",maxWidth:320}}>
+      <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+        style={{width:"100%",padding:"6px 28px 6px 30px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.text,fontSize:13}}/>
+      <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:12,color:C.mist,pointerEvents:"none"}}>🔍</span>
+      {value&&<button onClick={()=>onChange("")} title="清空" style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.mist,cursor:"pointer",fontSize:14,lineHeight:1}}>×</button>}
+    </div>
+  );
+}
+// 今天及以后最近的一个未完成日程，给卡片和列表显示
+function nextMilestone(ms,today){
+  const list=(ms||[]).filter(m=>!m.done);
+  return list.find(m=>m.date>=today)||null;
+}
 
 // ---------- 账号：邀请码注册 + 用户名密码登录，与 index.html / phd.html 保持一致 ----------
 // 登录后服务器发的令牌和旧的收件箱密钥存在同一个位置（jt4_inbox_key），所有云端接口都靠它认人。
@@ -1068,6 +1154,19 @@ function buildPhdEvents(professors,applications,today){
     if(a.status!=="prep"||a.rolling||!a.deadline||a.deadline<addDays(today,-30)) return;
     ev.push({id:`app-${a.id}`,kind:"deadline",title:`${a.school} · ${a.program} 网申截止`,detail:a.cycle||"",date:a.deadline,time:"",url:a.url||"",remindOn:[-7,-1,0].map(n=>addDays(a.deadline,n))});
   });
+  // 日程环节：未完成且不早于 30 天前的都同步；截止类按截止日期提醒，其余按会面提醒
+  const cutoff=addDays(today,-30);
+  const pushMs=(prefix,rec,owner,skip)=>{
+    if(skip) return;
+    (rec.milestones||[]).forEach(m=>{
+      if(!m.date||m.date<cutoff||m.done) return;
+      const dl=isDeadlineStage(m.stage);
+      ev.push({id:`${prefix}-${rec.id}-ms${m.id}`,kind:dl?"deadline":"milestone",title:[owner,m.stage].filter(Boolean).join(" · "),detail:m.note||"",date:m.date,time:m.time||"",url:rec.url||"",
+        remindOn:(dl?[-7,-1,0]:[-1,0]).map(n=>addDays(m.date,n))});
+    });
+  };
+  professors.forEach(p=>pushMs("prof",p,`${p.name}（${p.institution}）`,p.status==="failed"));
+  applications.forEach(a=>pushMs("app",a,`${a.school} · ${a.program}`,a.status==="rejected"));
   return ev;
 }
 
@@ -1103,6 +1202,7 @@ function migrateProfessor(p){
     note:          p.note          ?? "",
     applicationIds:Array.isArray(p.applicationIds)?p.applicationIds:[],
     contacts:      Array.isArray(p.contacts)?p.contacts:[],
+    milestones:    Array.isArray(p.milestones)?p.milestones:[],
     id:            p.id            ?? Date.now(),
   };
 }
@@ -1117,6 +1217,7 @@ function migrateApplication(a){
     status:  APP_STATUS.some(s=>s.key===a.status)?a.status:"prep",
     url:     a.url     ?? "",
     note:    a.note    ?? "",
+    milestones:Array.isArray(a.milestones)?a.milestones:[],
     id:      a.id      ?? Date.now(),
   };
 }
@@ -1175,6 +1276,98 @@ function ContactLog({entries,onChange}){
           <button onClick={add} style={{padding:"8px 14px",borderRadius:8,border:"none",background:C.sage,color:C.white,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>＋ 添加</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// 日程环节编辑，与 index.html 的 MilestoneEditor 一致；title 用作 .ics 文件名和日历标题
+function MilestoneEditor({milestones,onChange,title}){
+  const [stage,setStage]=useState(PHD_STAGES[0]);
+  const [date,setDate]=useState(todayStr());
+  const [time,setTime]=useState("");
+  const [note,setNote]=useState("");
+  const [editingId,setEditingId]=useState(null);
+  const resetForm=()=>{
+    setEditingId(null);setStage(PHD_STAGES[0]);setDate(todayStr());setTime("");setNote("");
+  };
+  const startEdit=m=>{
+    setEditingId(m.id);setStage(m.stage);setDate(m.date);setTime(m.time||"");setNote(m.note||"");
+  };
+  const submit=()=>{
+    if(!stage||!date) return;
+    if(editingId){
+      onChange(milestones.map(m=>m.id===editingId?{...m,stage,date,time,note}:m).sort((a,b)=>a.date.localeCompare(b.date)));
+      resetForm();
+    }else{
+      onChange([...milestones,{id:Date.now(),stage,date,time,note}].sort((a,b)=>a.date.localeCompare(b.date)));
+      setNote("");setTime("");
+    }
+  };
+  const remove=id=>{ onChange(milestones.filter(m=>m.id!==id)); if(editingId===id) resetForm(); };
+  const toggleDone=id=>onChange(milestones.map(m=>m.id===id?{...m,done:!m.done}:m));
+  const addToCalendar=m=>downloadICS(`${title}-${m.stage}.ics`,buildMilestoneICS({company:title,stage:m.stage,date:m.date,time:m.time,note:m.note}));
+  return(
+    <div style={{marginTop:4}}>
+      {milestones.length>0&&(
+        <div style={{marginBottom:12,position:"relative",paddingLeft:16}}>
+          <div style={{position:"absolute",left:6,top:0,bottom:0,width:2,background:C.frost,borderRadius:2}}/>
+          {milestones.map(m=>(
+            <div key={m.id} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8,position:"relative"}}>
+              <div style={{width:10,height:10,borderRadius:"50%",background:PHD_STAGE_COLOR[m.stage]||C.sage,flexShrink:0,marginTop:3,zIndex:1}}/>
+              <div style={{flex:1,background:editingId===m.id?C.frost:C.cream,borderRadius:8,padding:"6px 10px",border:`1px solid ${editingId===m.id?C.sage:C.border}`,opacity:m.done?0.55:1}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:12,fontWeight:700,color:PHD_STAGE_COLOR[m.stage]||C.sage,textDecoration:m.done?"line-through":"none"}}>{m.stage}</span>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <button onClick={()=>toggleDone(m.id)} title={m.done?"取消完成（恢复提醒）":"标记已完成（不再提醒、从日历移除）"} style={{background:"none",border:"none",color:m.done?C.moss:C.mist,cursor:"pointer",fontSize:13,lineHeight:1}}>{m.done?"☑":"☐"}</button>
+                    <span style={{fontSize:11,color:C.mist}}>{m.date}{m.time?` ${m.time}`:""}</span>
+                    <button onClick={()=>startEdit(m)} title="编辑" style={{background:"none",border:"none",color:C.sage,cursor:"pointer",fontSize:12,lineHeight:1}}>✎</button>
+                    <button onClick={()=>addToCalendar(m)} title="添加到日历" style={{background:"none",border:"none",color:C.sage,cursor:"pointer",fontSize:13,lineHeight:1}}>📅</button>
+                    <button onClick={()=>remove(m.id)} style={{background:"none",border:"none",color:"#b05050",cursor:"pointer",fontSize:13,lineHeight:1}}>×</button>
+                  </div>
+                </div>
+                {m.note&&<div style={{fontSize:11,color:C.textLight,marginTop:2,fontStyle:"italic",wordBreak:"break-word"}}>{linkifyText(m.note)}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{background:C.frost,borderRadius:10,padding:10}}>
+        {editingId&&<div style={{fontSize:11,color:C.moss,fontWeight:600,marginBottom:8}}>✎ 正在编辑该日程</div>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+          <div style={{gridColumn:"1/-1"}}>
+            <label style={{...lbl,fontSize:11}}>类型</label>
+            <select style={{...inp,fontSize:13}} value={stage} onChange={e=>setStage(e.target.value)}>
+              {PHD_STAGES.map(s=><option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{...lbl,fontSize:11}}>日期</label>
+            <input type="date" style={{...inp,fontSize:13}} value={date} onChange={e=>setDate(e.target.value)}/>
+          </div>
+          <div>
+            <label style={{...lbl,fontSize:11}}>时间（可选）</label>
+            <input type="time" style={{...inp,fontSize:13}} value={time} onChange={e=>setTime(e.target.value)}/>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <input style={{...inp,fontSize:12,flex:1}} value={note} onChange={e=>setNote(e.target.value)} placeholder="备注（可选，如会议链接）"/>
+          {editingId&&<button onClick={resetForm} style={{padding:"8px 14px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.textLight,cursor:"pointer",fontSize:13,whiteSpace:"nowrap"}}>取消</button>}
+          <button onClick={submit} style={{padding:"8px 14px",borderRadius:8,border:"none",background:C.sage,color:C.white,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>{editingId?"✓ 保存修改":"＋ 添加"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 卡片上的下一个日程
+function NextMilestoneLine({ms}){
+  const m=nextMilestone(ms,todayStr());
+  if(!m) return null;
+  const today=todayStr();
+  const soon=diffDays(today,m.date)<=1;
+  return(
+    <div style={{fontSize:12,marginBottom:6,color:soon?"#c0392b":C.textLight,fontWeight:soon?700:400}}>
+      🗓 <span style={{color:PHD_STAGE_COLOR[m.stage]||C.sage,fontWeight:700}}>{m.stage}</span> · {m.date}{m.time?` ${m.time}`:""}（{dueLabel(m.date,today)}）
     </div>
   );
 }
@@ -1328,6 +1521,10 @@ function ProfessorForm({initial,applications,tagPool,onAddToPool,onSave,onCancel
         <label style={{...lbl,fontSize:13,color:C.moss}}>📝 沟通与反馈记录</label>
         <ContactLog entries={form.contacts||[]} onChange={v=>set("contacts",v)}/>
       </div>
+      <div style={{marginTop:16}}>
+        <label style={{...lbl,fontSize:13,color:C.moss}}>🗓 日程（Informal Meeting、Interview 等，会进提醒和订阅日历）</label>
+        <MilestoneEditor milestones={form.milestones||[]} onChange={v=>set("milestones",v)} title={[form.name,form.institution].filter(Boolean).join("-")}/>
+      </div>
       <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
         <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
         <button onClick={()=>form.name&&form.institution&&onSave(form)}
@@ -1356,6 +1553,7 @@ function ProfessorCard({prof,linkedApps,onEdit,onDel,onMarkFollowed}){
       </div>
       <div style={{fontSize:12,color:C.textLight,marginBottom:6}}>{prof.institution}</div>
       <FollowupHint prof={prof} onMarkFollowed={onMarkFollowed}/>
+      <NextMilestoneLine ms={prof.milestones}/>
       {(prof.researchAreas||[]).length>0&&(
         <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6}}>
           {prof.researchAreas.map(tag=><span key={tag} style={{background:C.frost,color:C.moss,borderRadius:6,padding:"1px 7px",fontSize:11,fontWeight:600}}>{tag}</span>)}
@@ -1453,6 +1651,10 @@ function ApplicationForm({initial,onSave,onCancel}){
         <div><label style={lbl}>项目官网链接</label><input style={inp} value={form.url||""} onChange={e=>set("url",e.target.value)} placeholder="https://..."/></div>
         <div style={{gridColumn:"1/-1"}}><label style={lbl}>备注</label><input style={inp} value={form.note||""} onChange={e=>set("note",e.target.value)} placeholder="可选"/></div>
       </div>
+      <div style={{marginTop:16}}>
+        <label style={{...lbl,fontSize:13,color:C.moss}}>🗓 日程（Interview、Admission Deadline 等，会进提醒和订阅日历）</label>
+        <MilestoneEditor milestones={form.milestones||[]} onChange={v=>set("milestones",v)} title={[form.school,form.program].filter(Boolean).join("-")}/>
+      </div>
       <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
         <button onClick={onCancel} style={{padding:"8px 20px",borderRadius:8,border:`1px solid ${C.border}`,background:C.cream,color:C.textLight,cursor:"pointer",fontSize:14}}>取消</button>
         <button onClick={()=>form.school&&form.program&&onSave(form)}
@@ -1493,6 +1695,7 @@ function ApplicationCard({app,linkedProfs,onEdit,onDel}){
           {expired&&<span style={{color:"#aaa",fontSize:11}}>(已过期)</span>}
         </div>
       )}
+      <NextMilestoneLine ms={app.milestones}/>
       <div className={`collapsible ${expanded?"open":"closed"}`}>
         <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4,marginBottom:8}}>
           {linkedProfs.length>0&&(
@@ -1589,7 +1792,11 @@ function App(){
   const [aModal,setAModal]=useState(null);
   const [pFilter,setPFilter]=useState("all");
   const [aFilter,setAFilter]=useState("all");
-  const [view,setView]=useState("卡片");
+  const [view,setView]=useState("列表");
+  const [pSearch,setPSearch]=useState("");
+  const [aSearch,setASearch]=useState("");
+  const pSort=useSort();
+  const aSort=useSort();
   const [inboxItems,setInboxItems]=useState([]);
   const [inboxOpen,setInboxOpen]=useState(false);
   const [inboxLoading,setInboxLoading]=useState(false);
@@ -1806,10 +2013,17 @@ function App(){
   const tabBtn=active=>({padding:"6px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,background:active?C.fir:"transparent",color:active?C.white:C.textLight,transition:"all 0.2s"});
   const viewToggle=(
     <div style={{display:"flex",gap:3,background:C.frost,borderRadius:24,padding:3}}>
-      {["卡片","列表"].map(v=><button key={v} style={tabBtn(view===v)} onClick={()=>setView(v)}>{v}</button>)}
+      {["列表","卡片"].map(v=><button key={v} style={tabBtn(view===v)} onClick={()=>setView(v)}>{v}</button>)}
     </div>
   );
   const thStyle={padding:"11px 12px",textAlign:"left",fontWeight:600,fontSize:12,whiteSpace:"nowrap"};
+  // 可排序的列标题：k 为空表示这一列不排序
+  const sortTh=(s,h,k)=>(
+    <th key={h} onClick={k?()=>s.clickSort(k):undefined} title={k?"点击排序":undefined}
+      style={{...thStyle,cursor:k?"pointer":"default",userSelect:"none"}}>
+      {h}{k&&<span style={{marginLeft:4,opacity:s.sort.key===k?1:0.35,fontSize:10}}>{s.sort.key===k?(s.sort.dir===1?"▲":"▼"):"⇅"}</span>}
+    </th>
+  );
   const td={padding:"9px 12px"};
   const tableWrap={background:C.white,borderRadius:14,border:`1px solid ${C.border}`,overflow:"auto",boxShadow:`0 2px 12px ${C.shadow}`};
   const rowBtns=(onEdit,onDel)=>(
@@ -1819,8 +2033,39 @@ function App(){
     </div>
   );
 
-  const filteredProfs=professors.filter(p=>pFilter==="all"||p.status===pFilter);
-  const filteredApps=applications.filter(a=>aFilter==="all"||a.status===aFilter);
+  const today=todayStr();
+  const appsOf=p=>applications.filter(a=>(p.applicationIds||[]).includes(a.id));
+  const profsOf=a=>professors.filter(p=>(p.applicationIds||[]).includes(a.id));
+  const msText=ms=>(ms||[]).flatMap(m=>[m.stage,m.note]);
+  const filteredProfs=pSort.apply(
+    professors.filter(p=>pFilter==="all"||p.status===pFilter).filter(p=>matchSearch(pSearch,[
+      p.name,p.institution,...(p.researchAreas||[]),p.note,...(p.contacts||[]).map(c=>c.note),...msText(p.milestones),
+      ...appsOf(p).flatMap(a=>[a.school,a.program]),
+    ])),
+    {
+      name:p=>p.name, institution:p=>p.institution, research:p=>(p.researchAreas||[]).join(" "),
+      status:p=>{const i=PROF_STATUS.findIndex(s=>s.key===p.status);return i<0?null:i;},
+      latest:p=>{const cs=p.contacts||[];return cs.length?cs[cs.length-1].date:null;},
+      next:p=>nextMilestone(p.milestones,today)?.date,
+      apps:p=>appsOf(p).map(a=>a.school).join(" "), note:p=>p.note,
+    });
+  const filteredApps=aSort.apply(
+    applications.filter(a=>aFilter==="all"||a.status===aFilter).filter(a=>matchSearch(aSearch,[
+      a.school,a.program,a.cycle,a.note,...msText(a.milestones),...profsOf(a).flatMap(p=>[p.name,p.institution]),
+    ])),
+    {
+      school:a=>a.school, program:a=>a.program, cycle:a=>a.cycle,
+      status:a=>{const i=APP_STATUS.findIndex(s=>s.key===a.status);return i<0?null:i;},
+      deadline:a=>a.rolling?null:a.deadline,
+      next:a=>nextMilestone(a.milestones,today)?.date,
+      profs:a=>profsOf(a).map(p=>p.name).join(" "), note:a=>a.note,
+    });
+  const msCell=ms=>{
+    const m=nextMilestone(ms,today);
+    if(!m) return <span style={{color:C.mist,fontSize:12}}>—</span>;
+    const soon=diffDays(today,m.date)<=1;
+    return <span style={{fontSize:12,whiteSpace:"nowrap"}}><span style={{color:PHD_STAGE_COLOR[m.stage]||C.sage,fontWeight:700}}>{m.stage}</span><br/><span style={{color:soon?"#c0392b":C.mist,fontWeight:soon?700:400}}>{m.date}{m.time?` ${m.time}`:""}</span></span>;
+  };
 
   return(
     <div style={{minHeight:"100vh",background:C.cream}}>
@@ -1925,6 +2170,8 @@ function App(){
                   <option value="all">全部状态</option>
                   {PROF_STATUS.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
+                <SearchBox value={pSearch} onChange={setPSearch} placeholder="检索导师、院校、研究方向、备注…"/>
+                {(pSearch||pFilter!=="all")&&<span style={{fontSize:12,color:C.textLight}}>{filteredProfs.length} / {professors.length} 条</span>}
               </div>
             )}
             {view==="卡片"&&(
@@ -1938,17 +2185,17 @@ function App(){
             {view==="列表"&&sel.length>0&&<BatchBar count={sel.length} fields={PROF_BATCH_FIELDS} onApply={batchProfs} onDelete={batchDelete} onClear={()=>setSel([])}/>}
             {view==="列表"&&professors.length>0&&(
               <div style={tableWrap}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:760}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:860}}>
                   <thead>
                     <tr style={{background:C.fir,color:C.frost}}>
                       <th style={{...thStyle,width:32}}>{selCheckbox(filteredProfs.map(p=>p.id))}</th>
-                      {["导师","院校","研究方向","状态","最新沟通","关联项目","备注","操作"].map(h=><th key={h} style={thStyle}>{h}</th>)}
+                      {[["导师","name"],["院校","institution"],["研究方向","research"],["状态","status"],["最新沟通","latest"],["下一日程","next"],["关联项目","apps"],["备注","note"],["操作",null]].map(([h,k])=>sortTh(pSort,h,k))}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredProfs.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:32,color:C.mist}}>暂无符合条件的记录</td></tr>}
+                    {filteredProfs.length===0&&<tr><td colSpan={10} style={{textAlign:"center",padding:32,color:C.mist}}>暂无符合条件的记录</td></tr>}
                     {filteredProfs.map((prof,i)=>{
-                      const linkedApps=applications.filter(a=>(prof.applicationIds||[]).includes(a.id));
+                      const linkedApps=appsOf(prof);
                       const cs=prof.contacts||[];
                       const latest=cs.length>0?cs[cs.length-1]:null;
                       return(
@@ -1965,6 +2212,7 @@ function App(){
                           <td style={{...td,maxWidth:200}}>
                             {latest?<span style={{fontSize:12}}><span style={{color:C.mist}}>{latest.date}</span> <span style={{color:C.text}}>{latest.note}</span></span>:<span style={{color:C.mist,fontSize:12}}>—</span>}
                           </td>
+                          <td style={td}>{msCell(prof.milestones)}</td>
                           <td style={{...td,color:C.textLight,fontSize:12,maxWidth:160,wordBreak:"break-word"}}>{linkedApps.length?linkedApps.map(a=>`${a.school}·${a.program}`).join('，'):"—"}</td>
                           <td style={{...td,color:C.textLight,fontStyle:"italic",maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={prof.note||""}>{prof.note||"—"}</td>
                           <td style={{...td,whiteSpace:"nowrap"}}>{rowBtns(()=>setPModal(prof),()=>delProf(prof.id))}</td>
@@ -2000,6 +2248,8 @@ function App(){
                   <option value="all">全部状态</option>
                   {APP_STATUS.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
+                <SearchBox value={aSearch} onChange={setASearch} placeholder="检索学校、项目、批次、导师、备注…"/>
+                {(aSearch||aFilter!=="all")&&<span style={{fontSize:12,color:C.textLight}}>{filteredApps.length} / {applications.length} 条</span>}
               </div>
             )}
             {view==="卡片"&&(
@@ -2013,17 +2263,17 @@ function App(){
             {view==="列表"&&sel.length>0&&<BatchBar count={sel.length} fields={APP_BATCH_FIELDS} onApply={batchApps} onDelete={batchDelete} onClear={()=>setSel([])}/>}
             {view==="列表"&&applications.length>0&&(
               <div style={tableWrap}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:760}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:860}}>
                   <thead>
                     <tr style={{background:C.fir,color:C.frost}}>
                       <th style={{...thStyle,width:32}}>{selCheckbox(filteredApps.map(a=>a.id))}</th>
-                      {["学校","项目/院系","批次","状态","截止日期","关联导师","备注","操作"].map(h=><th key={h} style={thStyle}>{h}</th>)}
+                      {[["学校","school"],["项目/院系","program"],["批次","cycle"],["状态","status"],["截止日期","deadline"],["下一日程","next"],["关联导师","profs"],["备注","note"],["操作",null]].map(([h,k])=>sortTh(aSort,h,k))}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredApps.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:32,color:C.mist}}>暂无符合条件的记录</td></tr>}
+                    {filteredApps.length===0&&<tr><td colSpan={10} style={{textAlign:"center",padding:32,color:C.mist}}>暂无符合条件的记录</td></tr>}
                     {filteredApps.map((app,i)=>{
-                      const linkedProfs=professors.filter(p=>(p.applicationIds||[]).includes(app.id));
+                      const linkedProfs=profsOf(app);
                       const daysLeft=app.deadline?diffDays(todayStr(),app.deadline):null;
                       const urgent=daysLeft!==null&&daysLeft<=7&&daysLeft>=0;
                       const expired=daysLeft!==null&&daysLeft<0;
@@ -2043,6 +2293,7 @@ function App(){
                                 ?<span style={{color:urgent?"#e05050":expired?"#aaa":C.textLight,fontWeight:urgent?700:400}}>{app.deadline}{urgent&&" ❗"}{expired&&" (已过期)"}</span>
                                 :<span style={{color:C.mist}}>—</span>}
                           </td>
+                          <td style={td}>{msCell(app.milestones)}</td>
                           <td style={{...td,color:C.textLight,fontSize:12,maxWidth:150,wordBreak:"break-word"}}>{linkedProfs.length?linkedProfs.map(p=>p.name).join('，'):"—"}</td>
                           <td style={{...td,color:C.textLight,fontStyle:"italic",maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={app.note||""}>{app.note||"—"}</td>
                           <td style={{...td,whiteSpace:"nowrap"}}>{rowBtns(()=>setAModal(app),()=>delApp(app.id))}</td>

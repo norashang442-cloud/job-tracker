@@ -552,8 +552,10 @@ function DayHeader({events}){
   return <ColTitle title={greet}/>;
 }
 
-// 右栏：日程和上方操作按钮的统一宽度，右边缘对齐（与秋招页一致）
+// 右栏上方操作按钮的宽度（与秋招页一致）
 const AGENDA_W=300;
+// 右栏日程列表的宽度：右边还要并排放小月历（7 × CAL_CELL），两者加间距不超过右栏内容区（约 410px）
+const AGENDA_LIST_W=240;
 // 中栏流程标签组的统一宽度，两个页面一致（秋招三个标签带角标时约 317px）
 const TABS_W=320;
 
@@ -680,6 +682,86 @@ function PageSwitch({current}){
 
 // 顶部右栏的日程：本页事项正常显示、点击打开对应记录（今天 / 明天最多先显示 4 条）；
 // 另一边的事项读它最近一次保存的本地缓存，按天合并成一行淡淡显示「这段时间被占了」，不可点。「未来 7 天」默认折叠。
+// 顶部右栏的小月历：看一个月里事项的松紧。数据和日程一致（本页提醒 + 另一边的本地缓存），
+// 每天最多 3 个圆点：本页按类型上色，另一边一律浅色；过去的日子变淡。点有事项的日子弹出当天清单，本页条目可点开。
+const CAL_CELL=22;
+const CAL_DOT={milestone:"#2F5A7A",deadline:"#C0392B",activity:"#B08A2E"};
+function MiniCalendar({events,target,onOpen}){
+  useClock();
+  const otherLabel=target==="job"?"申博":"秋招";
+  const today=todayStr();
+  const [ym,setYm]=useState(today.slice(0,7));
+  const [picked,setPicked]=useState(null);
+  const boxRef=useRef(null);
+  useEffect(()=>{
+    if(!picked) return;
+    const close=ev=>{if(boxRef.current&&!boxRef.current.contains(ev.target)) setPicked(null);};
+    document.addEventListener("mousedown",close);
+    return()=>document.removeEventListener("mousedown",close);
+  },[picked]);
+  let otherEvents=[];
+  try{otherEvents=JSON.parse(localStorage.getItem(lsKey("agenda_"+(target==="job"?"phd":"job")))||"[]")}catch{}
+  const byDate={};
+  [...events.map(e=>({...e,mine:true})),...otherEvents.map(e=>({...e,mine:false}))].forEach(e=>{
+    if(e.date&&e.date.startsWith(ym)) (byDate[e.date]=byDate[e.date]||[]).push(e);
+  });
+  Object.values(byDate).forEach(l=>l.sort((a,b)=>(b.mine-a.mine)||(a.time||"99").localeCompare(b.time||"99")));
+  const [y,m]=ym.split("-").map(Number);
+  const first=`${ym}-01`;
+  const lead=(new Date(y,m-1,1).getDay()+6)%7;  // 周一开头
+  const days=new Date(y,m,0).getDate();
+  const cells=[...Array(lead).fill(null),...Array.from({length:days},(_,i)=>`${ym}-${pad2(i+1)}`)];
+  const shift=n=>{setPicked(null);setYm(addDays(first,n<0?-1:days).slice(0,7));};
+  const navBtn={background:"none",border:"none",color:C.textLight,cursor:"pointer",fontSize:14,lineHeight:1,padding:"0 4px"};
+  const items=picked?byDate[picked]||[]:[];
+  return(
+    <div ref={boxRef} style={{position:"relative",width:CAL_CELL*7,flexShrink:0,userSelect:"none"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:2}}>
+        <button onClick={()=>shift(-1)} style={navBtn} title="上个月">‹</button>
+        <span onClick={()=>{setPicked(null);setYm(today.slice(0,7));}} title="回到本月" style={{fontSize:12,fontWeight:700,color:C.fir,cursor:"pointer"}}>{y}年{m}月</span>
+        <button onClick={()=>shift(1)} style={navBtn} title="下个月">›</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:`repeat(7,${CAL_CELL}px)`}}>
+        {"一二三四五六日".split("").map(w=><div key={w} style={{fontSize:10,color:C.mist,textAlign:"center",lineHeight:"14px"}}>{w}</div>)}
+        {cells.map((d,i)=>{
+          if(!d) return <div key={"e"+i}/>;
+          const list=byDate[d]||[];
+          const isToday=d===today;
+          return(
+            <div key={d} onClick={list.length?()=>setPicked(p=>p===d?null:d):undefined}
+              title={list.map(e=>`${e.mine?"":`[${otherLabel}] `}${e.short||e.title}${e.time?` ${e.time}`:""}`).join("\n")}
+              style={{height:CAL_CELL-2,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",borderRadius:6,
+                cursor:list.length?"pointer":"default",opacity:d<today?0.4:1,
+                background:isToday?C.fir:picked===d?C.frost:"transparent"}}>
+              <span style={{fontSize:11,lineHeight:"12px",color:isToday?C.white:C.text,fontWeight:isToday?700:400}}>{Number(d.slice(8))}</span>
+              <span style={{display:"flex",gap:2,height:4,marginTop:1}}>
+                {list.slice(0,3).map(e=><span key={(e.mine?"m":"o")+e.id} style={{width:4,height:4,borderRadius:"50%",background:isToday?C.white:e.mine?(CAL_DOT[e.kind]||C.reed):C.mist}}/>)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {picked&&(
+        <div style={{position:"absolute",right:0,top:"calc(100% + 6px)",width:240,background:C.white,border:`1px solid ${C.border}`,borderRadius:10,boxShadow:`0 8px 24px ${C.shadow}`,padding:"8px 10px",zIndex:60}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <span style={{fontSize:12,fontWeight:700,color:C.fir}}>{Number(picked.slice(5,7))}月{Number(picked.slice(8))}日 周{weekday(picked)}</span>
+            <button onClick={()=>setPicked(null)} style={{...navBtn,fontSize:13}}>×</button>
+          </div>
+          {items.map(e=>(
+            <div key={(e.mine?"m":"o")+e.id} onClick={e.mine?()=>{setPicked(null);onOpen(e);}:undefined} title={e.mine?(e.detail||"点击打开"):""}
+              style={{fontSize:12,padding:"3px 4px",margin:"0 -4px",borderRadius:6,cursor:e.mine?"pointer":"default",color:e.mine?C.text:C.mist,wordBreak:"break-word"}}
+              onMouseOver={ev=>{if(e.mine) ev.currentTarget.style.background=C.cream;}} onMouseOut={ev=>ev.currentTarget.style.background="transparent"}>
+              {!e.mine&&<span style={{border:`1px solid ${C.border}`,borderRadius:4,padding:"0 4px",marginRight:5,fontSize:11}}>{otherLabel}</span>}
+              {e.mine&&<span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",background:CAL_DOT[e.kind]||C.reed,marginRight:6,verticalAlign:"middle"}}/>}
+              {e.short||e.title}{e.time&&<span style={{color:e.mine?C.sage:C.mist,fontWeight:600}}> {e.time}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const NEAR_LIMIT=4;
 function AgendaPanel({events,target,onOpen}){
   useClock();
@@ -720,7 +802,7 @@ function AgendaPanel({events,target,onOpen}){
         const one=l.items.length===1?l.items[0]:null;
         const key=(nearCol?"n-":"w-")+l.date;
         const open=!!openGroups[key];
-        const label=it=>`${it.title}${it.time?` ${it.time}`:""}`;
+        const label=it=>`${it.short||it.title}${it.time?` ${it.time}`:""}`;
         return(
           <div key={"o-"+key} style={{fontSize:11,color:C.mist,padding:"2px 0"}}>
             <div onClick={one?undefined:()=>toggleGroup(key)} style={{display:"flex",gap:8,cursor:one?"default":"pointer"}}>
@@ -743,10 +825,10 @@ function AgendaPanel({events,target,onOpen}){
       shown++;
       const time=e.time?` ${e.time}${e.endTime?`–${e.endTime}`:""}`:"";
       return(
-        <div key={e.id} onClick={()=>onOpen(e)} title={e.detail||"点击打开"} style={{display:"flex",gap:8,fontSize:13,padding:"4px 6px",margin:"0 -6px",borderRadius:7,cursor:"pointer"}}
+        <div key={e.id} onClick={()=>onOpen(e)} title={[e.title,e.detail].filter(Boolean).join("\n")||"点击打开"} style={{display:"flex",gap:8,fontSize:13,padding:"4px 6px",margin:"0 -6px",borderRadius:7,cursor:"pointer"}}
           onMouseOver={ev=>ev.currentTarget.style.background=C.cream} onMouseOut={ev=>ev.currentTarget.style.background="transparent"}>
           <span style={{width:62,flexShrink:0,fontSize:12,fontWeight:700,color:e.date<=today?"#c0392b":C.textLight}}>{whenOf(e.date,nearCol)}</span>
-          <span style={{color:C.text,wordBreak:"break-word"}}>{KIND_ICON[e.kind]||"•"} {e.title}<span style={{color:C.sage,fontWeight:600}}>{time}</span></span>
+          <span style={{color:C.text,wordBreak:"break-word"}}>{KIND_ICON[e.kind]||"•"} {e.short||e.title}<span style={{color:C.sage,fontWeight:600}}>{time}</span></span>
         </div>
       );
     });
@@ -1150,25 +1232,25 @@ function buildPhdEvents(professors,applications,today){
   professors.forEach(p=>{
     const f=followupDue(p);
     if(!f) return;
-    ev.push({id:`prof-${p.id}-${p.status}`,kind:"followup",title:`${p.name}（${p.institution}）`,detail:`${f.label} · ${f.base}`,date:f.date,time:"",url:p.url||"",remindOn:[f.date],repeatUntilDone:true});
+    ev.push({id:`prof-${p.id}-${p.status}`,kind:"followup",title:`${p.name}（${p.institution}）`,short:`${p.name}-跟进`,detail:`${f.label} · ${f.base}`,date:f.date,time:"",url:p.url||"",remindOn:[f.date],repeatUntilDone:true});
   });
   applications.forEach(a=>{
     if(a.status!=="prep"||a.rolling||!a.deadline||a.deadline<addDays(today,-30)) return;
-    ev.push({id:`app-${a.id}`,kind:"deadline",title:`${a.school} · ${a.program} 网申截止`,detail:a.cycle||"",date:a.deadline,time:"",url:a.url||"",remindOn:[-7,-1,0].map(n=>addDays(a.deadline,n))});
+    ev.push({id:`app-${a.id}`,kind:"deadline",title:`${a.school} · ${a.program} 网申截止`,short:`${a.school}-网申截止`,detail:a.cycle||"",date:a.deadline,time:"",url:a.url||"",remindOn:[-7,-1,0].map(n=>addDays(a.deadline,n))});
   });
   // 日程环节：未完成且不早于 30 天前的都同步；截止类按截止日期提醒，其余按会面提醒
   const cutoff=addDays(today,-30);
-  const pushMs=(prefix,rec,owner,skip)=>{
+  const pushMs=(prefix,rec,owner,who,skip)=>{
     if(skip) return;
     (rec.milestones||[]).forEach(m=>{
       if(!m.date||m.date<cutoff||m.done) return;
       const dl=isDeadlineStage(m.stage);
-      ev.push({id:`${prefix}-${rec.id}-ms${m.id}`,kind:dl?"deadline":"milestone",title:[owner,m.stage].filter(Boolean).join(" · "),detail:m.note||"",date:m.date,time:m.time||"",url:rec.url||"",
+      ev.push({id:`${prefix}-${rec.id}-ms${m.id}`,kind:dl?"deadline":"milestone",title:[owner,m.stage].filter(Boolean).join(" · "),short:`${who}-${m.stage}`,detail:m.note||"",date:m.date,time:m.time||"",url:rec.url||"",
         remindOn:(dl?[-7,-1,0]:[-1,0]).map(n=>addDays(m.date,n))});
     });
   };
-  professors.forEach(p=>pushMs("prof",p,`${p.name}（${p.institution}）`,p.status==="failed"));
-  applications.forEach(a=>pushMs("app",a,`${a.school} · ${a.program}`,a.status==="rejected"));
+  professors.forEach(p=>pushMs("prof",p,`${p.name}（${p.institution}）`,p.name,p.status==="failed"));
+  applications.forEach(a=>pushMs("app",a,`${a.school} · ${a.program}`,a.school,a.status==="rejected"));
   return ev;
 }
 
@@ -2140,16 +2222,19 @@ function App(){
             </div>
           </div>
           <div className="top-cell top-div-light" style={{borderLeft:`1px solid ${C.border}`,display:"flex",gap:20,alignItems:"flex-start"}}>
-          <div style={{width:AGENDA_W,flexShrink:0}}>
+          <div style={{flex:1,minWidth:0}}>
             <DayHeader events={reminderEvents}/>
-            <div style={{minHeight:BODY_H,display:"flex",flexDirection:"column",justifyContent:"center"}}>
-              <AgendaPanel events={reminderEvents} target="phd" onOpen={openFromAgenda}/>
-              {/* 活动入口放在日程下面 */}
-              <button onClick={()=>setMainTab("events")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"8px 12px",borderRadius:10,border:`1px solid ${mainTab==="events"?C.sage:C.border}`,background:mainTab==="events"?C.frost:C.cream,color:C.fir,fontSize:13,fontWeight:700,cursor:"pointer",marginTop:12}}>
-                <span>📅 活动{upcomingActs?` · ${upcomingActs}`:""}</span>
-                <span style={{color:C.textLight,fontWeight:400,fontSize:12}}>查看全部 ›</span>
-              </button>
+            {/* 左边日程 + 活动入口，右边小月历，并排放在内容区高度里 */}
+            <div style={{minHeight:BODY_H,display:"flex",gap:14,alignItems:"center"}}>
+              <div style={{width:AGENDA_LIST_W,flexShrink:0}}>
+                <AgendaPanel events={reminderEvents} target="phd" onOpen={openFromAgenda}/>
+                <button onClick={()=>setMainTab("events")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"8px 12px",borderRadius:10,border:`1px solid ${mainTab==="events"?C.sage:C.border}`,background:mainTab==="events"?C.frost:C.cream,color:C.fir,fontSize:13,fontWeight:700,cursor:"pointer",marginTop:12}}>
+                  <span>📅 活动{upcomingActs?` · ${upcomingActs}`:""}</span>
+                  <span style={{color:C.textLight,fontWeight:400,fontSize:12}}>查看全部 ›</span>
+                </button>
               </div>
+              <MiniCalendar events={reminderEvents} target="phd" onOpen={openFromAgenda}/>
+            </div>
           </div>
           </div>
         </div>
